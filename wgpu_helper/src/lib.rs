@@ -1,4 +1,5 @@
 pub mod types;
+pub mod bind_group;
 
 pub enum WGSL {
 	Struct {
@@ -48,6 +49,11 @@ pub trait Buffer: Sized {
 	fn get_mapped_data<'a>(&'a self) -> &'a Self::Source {
 		let buffer_view = unsafe { self.as_buffer() }.slice(..).get_mapped_range();
 		unsafe { &*(buffer_view.as_ptr() as *const Self::Source) }
+	}
+
+	fn get_mapped_data_mut<'a>(&'a mut self) -> &'a mut Self::Source {
+		let buffer_view = unsafe { self.as_buffer() }.slice(..).get_mapped_range_mut();
+		unsafe { &mut *(buffer_view.as_ptr() as *mut Self::Source) }
 	}
 }
 

@@ -1,6 +1,10 @@
 use ::wgpu_helper::*;
 use wgpu::BufferAsyncError;
 
+struct TestBindGroup {
+
+}
+
 #[test]
 fn new_buffer() {
 	let instance = wgpu::Instance::default();
@@ -22,7 +26,7 @@ fn new_buffer() {
 	let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 		label: None,
 		source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-			"buffer.wgsl"
+			"unit_struct_bind_group.wgsl"
 		))),
 	});
 
