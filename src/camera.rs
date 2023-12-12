@@ -8,7 +8,6 @@ pub const OPENGL_TO_WGPU_MATRIX: glm::Mat4x4 = glm::Mat4x4::new(
     0.0, 0.0, 0.0, 1.0,
 );
 
-
 pub struct Camera {
 	pub position: glm::Vec3,
 	pub rotation: glm::Quat,
@@ -16,32 +15,17 @@ pub struct Camera {
 	pub fovy: f32,
 	pub znear: f32,
 	pub zfar: f32,
-
-
-	pub camera_buffer: wgpu::Buffer,
-	pub camera_bind_group: wgpu::BindGroup,
 }
 
 impl Camera {
-	pub fn new(device: &mut wgpu::Device,  bind_group_layout: &mut wgpu::BindGroupLayout, position: glm::Vec3, fovy: f32, aspect: f32, zfar: f32, znear: f32, rotation: glm::Quat) -> Self {
-		let camera_uniform = CameraUniform::new();
-		let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("Camera Buffer"),
-			contents: bytemuck::cast_slice(&[camera_uniform]),
-			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-		});
-
-		let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: &bind_group_layout,
-			entries: &[wgpu::BindGroupEntry {
-				binding: 0,
-				resource: camera_buffer.as_entire_binding(),
-			}],
-			label: Some("camera_bind_group"),
-		});
-
-
-		
+	pub fn new(
+		position: glm::Vec3,
+		fovy: f32,
+		aspect: f32,
+		zfar: f32,
+		znear: f32,
+		rotation: glm::Quat,
+	) -> Self {
 		Self {
 			position,
 			rotation,
@@ -49,8 +33,6 @@ impl Camera {
 			aspect,
 			zfar,
 			znear,
-			camera_buffer,
-			camera_bind_group,
 		}
 	}
 
@@ -59,16 +41,20 @@ impl Camera {
 		view = view * glm::quat_to_mat4(&self.rotation);
 
 		let proj = glm::perspective(self.aspect, self.fovy, self.znear, self.zfar);
-	
+
 		return OPENGL_TO_WGPU_MATRIX * proj * view;
 	}
 
-	pub fn update(&self, queue: &mut wgpu::Queue) {
+	pub fn update(&self, queue: &mut wgpu::Queue, camera_buffer: &mut wgpu::Buffer) {
 		let mut camera_uniform = CameraUniform::new();
 
 		camera_uniform.update_view_proj(&self);
 
-		queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
+		queue.write_buffer(
+			camera_buffer,
+			0,
+			bytemuck::cast_slice(&[camera_uniform]),
+		);
 	}
 }
 

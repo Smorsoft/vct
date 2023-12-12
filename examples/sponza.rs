@@ -1,6 +1,5 @@
 extern crate nalgebra_glm as glm;
 
-use gltf::{camera::Projection, *};
 use vct::*;
 use winit::{
 	event::*,
@@ -8,56 +7,212 @@ use winit::{
 	window::WindowBuilder,
 };
 
+const CAMERA_MOVE_SPEED: f32 = 10.0;
+
 fn main() {
-	pollster::block_on(run());
-}
+	use winit::{
+		event::*,
+		event_loop::{ControlFlow, EventLoop},
+		window::WindowBuilder,
+	};
 
-async fn run() {
-	let mut gltf_cameras = Vec::new();
-	// let mut gltf_materials = Vec::new();
-	// let mut gltf_meshes = Vec::new();
+	let event_loop = EventLoop::new();
+	let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+	let mut app = pollster::block_on(App::new(&window));
+	let _cameras = app
+		.load_gltf("examples/sponza/NewSponza_Main_glTF_002.gltf", true);
+		// .load_gltf("examples/Box.glb", true);
+
+	let mut camera = camera::Camera {
+		position: [0.0, 0.0, -10.0].into(),
+		rotation: glm::Quat::identity(),
+		aspect: 16.0 / 9.0,
+		fovy: 90.0,
+		znear: 0.001,
+		zfar: 100000000.0,
+	};
+
+	app.renderer.update_camera(&camera);
+
+	let mut instant = std::time::Instant::now();
+
+	let mut w = ElementState::Released;
+	let mut a = ElementState::Released;
+	let mut s = ElementState::Released;
+	let mut d = ElementState::Released;
+	let mut c = ElementState::Released;
+	let mut space = ElementState::Released;
+
+	event_loop.run(move |event, _, control_flow| {
+		let new_instant = std::time::Instant::now();
+		let delta_time = new_instant.duration_since(instant).as_secs_f64();
+		instant = new_instant;
+
+		let mut movement = glm::vec3(0.0, 0.0, 0.0);
+		
+		{
+			match w {
+				ElementState::Pressed => {
+					let direction = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(0.0, 0.0, 1.0),
+					);
 	
-
-	let base = Gltf::open("examples/sponza/NewSponza_Main_glTF_002.gltf").unwrap();
-	let curtains = Gltf::open("examples/sponza/NewSponza_Curtains_glTF.gltf").unwrap();
-	for scene in base.scenes() {
-		for node in scene.nodes() {
-			if node.camera().is_some() {
-				gltf_cameras.push((node.camera(), node.transform()));
-			} else {
-				for primitive in node.mesh().unwrap().primitives() {
-					// primitive.
-				}
+					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
+				},
+				_ => {}
+			}
+			match a {
+				ElementState::Pressed => {
+					let direction = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(1.0, 0.0, 0.0),
+					);
+					
+					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
+				},
+				_ => {}
+			}
+			match s {
+				ElementState::Pressed => {
+					let direction = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(0.0, 0.0, -1.0),
+					);
+					
+					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
+				},
+				_ => {}
+			}
+			match d {
+				ElementState::Pressed => {
+					let direction = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(-1.0, 0.0, 0.0),
+					);
+	
+					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
+				},
+				_ => {}
+			}
+			match c {
+				ElementState::Pressed => {
+					let direction = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(0.0, 1.0, 0.0),
+					);
+	
+					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
+				},
+				_ => {}
+			}
+			match space {
+				ElementState::Pressed => {
+					let direction = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(0.0, -1.0, 0.0),
+					);
+	
+					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
+				},
+				_ => {}
 			}
 		}
-	}
 
-	// let (camera, camera_transform) = camera.unwrap();
-	// let decomposed = camera_transform.decomposed();
-	// let projection = match camera.projection() {
-	// 	Projection::Perspective(proj) => proj,
-	// 	_ => panic!(),
-	// };
-	
-	let event_loop = EventLoop::new();
-	let window = WindowBuilder::new()
-		.build(&event_loop)
-		.expect("Failed to create the window");
+		camera.position += movement;
+		app.renderer.update_camera(&camera);
 
-	// let mut state = State::new(window).await;
+		match event {
+			Event::WindowEvent {
+				ref event,
+				window_id,
+			} if window_id == window.id() => match event {
+				WindowEvent::CloseRequested
+				| WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state: ElementState::Pressed,
+							virtual_keycode: Some(VirtualKeyCode::Escape),
+							..
+						},
+					..
+				} => *control_flow = ControlFlow::Exit,
+				WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state,
+							virtual_keycode: Some(VirtualKeyCode::W),
+							..
+						},
+					..
+				} => w = state.to_owned(),
+				WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state,
+							virtual_keycode: Some(VirtualKeyCode::A),
+							..
+						},
+					..
+				} => a = state.to_owned(),
+				WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state,
+							virtual_keycode: Some(VirtualKeyCode::S),
+							..
+						},
+					..
+				} => s = state.to_owned(),
+				WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state,
+							virtual_keycode: Some(VirtualKeyCode::D),
+							..
+						},
+					..
+				} => d = state.to_owned(),
+				WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state,
+							virtual_keycode: Some(VirtualKeyCode::C),
+							..
+						},
+					..
+				} => c = state.to_owned(),
+				WindowEvent::KeyboardInput {
+					input:
+						KeyboardInput {
+							state,
+							virtual_keycode: Some(VirtualKeyCode::Space),
+							..
+						},
+					..
+				} => space = state.to_owned(),
+				
+				_ => {}
+			},
+			Event::MainEventsCleared => {
+				app.renderer.render().unwrap();
+			}
+			Event::DeviceEvent {event, ..} => match event {
+				DeviceEvent::MouseMotion { delta } => {
+					let right = glm::quat_rotate_vec3(
+						&glm::quat_inverse(&camera.rotation),
+						&glm::vec3(-1.0, 0.0, 0.0),
+					);
+					let up = glm::vec3(0.0_f32, -1.0, 0.0);
 
-	// let camera = state.new_camera(
-	// 	decomposed.0.to_owned().into(),
-	// 	projection.yfov(),
-	// 	projection.aspect_ratio().unwrap(),
-	// 	projection.zfar().unwrap(),
-	// 	projection.znear(),
-	// 	glm::Quat::from_parts(
-	// 		decomposed.1[3],
-	// 		glm::Vec3::new(decomposed.1[0], decomposed.1[1], decomposed.1[2]),
-	// 	),
-	// );
+					camera.rotation = glm::quat_rotate(&camera.rotation, delta.0 as f32 * delta_time as f32, &up);
+					camera.rotation = glm::quat_rotate(&camera.rotation, delta.1 as f32 * delta_time as f32, &right);
 
-	// camera.update(&mut state.queue);
-
+				},
+				_ => {}
+			},
+			_ => {}
+		}
+	});
 }
