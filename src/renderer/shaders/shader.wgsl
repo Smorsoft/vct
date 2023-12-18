@@ -28,9 +28,9 @@ struct VertexInput {
 	@location(0) position: vec3<f32>,
 	@location(1) tangent: vec4<f32>,
 	@location(2) normal: vec3<f32>,
-	@location(3) color0: vec3<f32>,
-	@location(4) tex_coord0: vec2<f32>,
-	@location(5) tex_coord1: vec2<f32>,
+	// @location(3) color0: vec3<f32>,
+	@location(3) tex_coord0: vec2<f32>,
+	// @location(5) tex_coord1: vec2<f32>,
 };
 
 struct VertexOutput {

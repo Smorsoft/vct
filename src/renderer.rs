@@ -305,9 +305,9 @@ impl Renderer {
 					position,
 					tangent: [0.0; 4],
 					normal: [0.0; 3],
-					color0: [0.0; 3],
+					// color0: [0.0; 3],
 					tex_coord0: [0.0; 2],
-					tex_coord1: [0.0; 2],
+					// tex_coord1: [0.0; 2],
 				});
 			}
 
@@ -332,11 +332,11 @@ impl Renderer {
 					}
 				}
 
-				if let Some(colors0) = reader.read_colors(0).map(|v| v.into_rgb_f32()) {
-					for (i, color0) in colors0.enumerate() {
-						vertices[i].color0 = color0;
-					}
-				}
+				// if let Some(colors0) = reader.read_colors(0).map(|v| v.into_rgb_f32()) {
+				// 	for (i, color0) in colors0.enumerate() {
+				// 		vertices[i].color0 = color0;
+				// 	}
+				// }
 
 				if let Some(tex_coord0) = reader.read_tex_coords(0).map(|v| v.into_f32()) {
 					for (i, tex_coord0) in tex_coord0.enumerate() {
@@ -344,11 +344,11 @@ impl Renderer {
 					}
 				}
 
-				if let Some(tex_coord1) = reader.read_tex_coords(1).map(|v| v.into_f32()) {
-					for (i, tex_coord1) in tex_coord1.enumerate() {
-						vertices[i].tex_coord1 = tex_coord1;
-					}
-				}
+				// if let Some(tex_coord1) = reader.read_tex_coords(1).map(|v| v.into_f32()) {
+				// 	for (i, tex_coord1) in tex_coord1.enumerate() {
+				// 		vertices[i].tex_coord1 = tex_coord1;
+				// 	}
+				// }
 			}
 		}
 

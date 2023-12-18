@@ -21,8 +21,8 @@ fn main() {
 
 	let mut app = pollster::block_on(App::new(&window));
 	let _cameras = app
-		// .load_gltf("examples/sponza/NewSponza_Main_glTF_002.gltf", true);
-		.load_gltf("examples/Box.glb", true);
+		.load_gltf("examples/sponza2/Sponza.gltf", true);
+		// .load_gltf("examples/Box.glb", true);
 
 	let mut camera = camera::Camera {
 		position: [0.0, 0.0, -10.0].into(),

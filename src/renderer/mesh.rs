@@ -23,9 +23,9 @@ pub struct VertexAttributes {
 	pub position: [f32; 3],
 	pub tangent: [f32; 4],
 	pub normal: [f32; 3],
-	pub color0: [f32; 3],
+	// pub color0: [f32; 3],
 	pub tex_coord0: [f32; 2],
-	pub tex_coord1: [f32; 2],
+	// pub tex_coord1: [f32; 2],
 }
 
 impl VertexAttributes {
@@ -34,9 +34,9 @@ impl VertexAttributes {
 			0 => Float32x3,
 			1 => Float32x4,
 			2 => Float32x3,
-			3 => Float32x3,
-			4 => Float32x2,
-			5 => Float32x2
+			// 3 => Float32x3,
+			3 => Float32x2,
+			// 5 => Float32x2
 		];
 
 		wgpu::VertexBufferLayout {
