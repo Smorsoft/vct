@@ -21,8 +21,8 @@ fn main() {
 
 	let mut app = pollster::block_on(App::new(&window));
 	let _cameras = app
-		.load_gltf("examples/sponza/NewSponza_Main_glTF_002.gltf", true);
-		// .load_gltf("examples/Box.glb", true);
+		// .load_gltf("examples/sponza/NewSponza_Main_glTF_002.gltf", true);
+		.load_gltf("examples/Box.glb", true);
 
 	let mut camera = camera::Camera {
 		position: [0.0, 0.0, -10.0].into(),
@@ -91,6 +91,7 @@ fn main() {
 						&glm::quat_inverse(&camera.rotation),
 						&glm::vec3(-1.0, 0.0, 0.0),
 					);
+
 	
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
 				},
@@ -195,9 +196,6 @@ fn main() {
 				
 				_ => {}
 			},
-			Event::MainEventsCleared => {
-				app.renderer.render().unwrap();
-			}
 			Event::DeviceEvent {event, ..} => match event {
 				DeviceEvent::MouseMotion { delta } => {
 					let right = glm::quat_rotate_vec3(
@@ -212,6 +210,9 @@ fn main() {
 				},
 				_ => {}
 			},
+			Event::MainEventsCleared => {
+				app.renderer.render().unwrap();
+			}
 			_ => {}
 		}
 	});

@@ -212,14 +212,14 @@ impl Renderer {
 	) -> Vec<super::camera::Camera> {
 		let mut cameras = Vec::new();
 
-		// let (document, buffers, _) = gltf::import(path).unwrap();
-		let document = gltf::Gltf::open(&path).unwrap();
-		let buffers = gltf::import_buffers(
-			&document,
-			Some(&std::path::Path::new("examples/sponza/")),
-			None,
-		)
-		.unwrap();
+		let (document, buffers, _) = gltf::import(path).unwrap();
+		// let document = gltf::Gltf::open(&path).unwrap();
+		// let buffers = gltf::import_buffers(
+		// 	&document,
+		// 	Some(&std::path::Path::new("examples/sponza/")),
+		// 	None,
+		// )
+		// .unwrap();
 
 		for scene in document.scenes() {
 			for node in scene.nodes() {

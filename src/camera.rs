@@ -38,7 +38,7 @@ impl Camera {
 
 	pub fn build_view_projection_matrix(&self) -> glm::Mat4x4 {
 		let mut view = glm::translate(&glm::Mat4x4::identity(), &self.position);
-		view = view * glm::quat_to_mat4(&self.rotation);
+		view = glm::quat_to_mat4(&self.rotation) * view;
 
 		let proj = glm::perspective(self.aspect, self.fovy, self.znear, self.zfar);
 
@@ -50,11 +50,7 @@ impl Camera {
 
 		camera_uniform.update_view_proj(&self);
 
-		queue.write_buffer(
-			camera_buffer,
-			0,
-			bytemuck::cast_slice(&[camera_uniform]),
-		);
+		queue.write_buffer(camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
 	}
 }
 
