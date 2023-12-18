@@ -20,9 +20,8 @@ fn main() {
 	let window = WindowBuilder::new().build(&event_loop).unwrap();
 
 	let mut app = pollster::block_on(App::new(&window));
-	let _cameras = app
-		.load_gltf("examples/sponza2/Sponza.gltf", true);
-		// .load_gltf("examples/Box.glb", true);
+	let _cameras = app.load_gltf("examples/Sponza/Sponza.gltf", true);
+	// .load_gltf("examples/Box.glb", true);
 
 	let mut camera = camera::Camera {
 		position: [0.0, 0.0, -10.0].into(),
@@ -50,7 +49,7 @@ fn main() {
 		instant = new_instant;
 
 		let mut movement = glm::vec3(0.0, 0.0, 0.0);
-		
+
 		{
 			match w {
 				ElementState::Pressed => {
@@ -58,9 +57,9 @@ fn main() {
 						&glm::quat_inverse(&camera.rotation),
 						&glm::vec3(0.0, 0.0, 1.0),
 					);
-	
+
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
-				},
+				}
 				_ => {}
 			}
 			match a {
@@ -69,9 +68,9 @@ fn main() {
 						&glm::quat_inverse(&camera.rotation),
 						&glm::vec3(1.0, 0.0, 0.0),
 					);
-					
+
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
-				},
+				}
 				_ => {}
 			}
 			match s {
@@ -80,9 +79,9 @@ fn main() {
 						&glm::quat_inverse(&camera.rotation),
 						&glm::vec3(0.0, 0.0, -1.0),
 					);
-					
+
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
-				},
+				}
 				_ => {}
 			}
 			match d {
@@ -92,9 +91,8 @@ fn main() {
 						&glm::vec3(-1.0, 0.0, 0.0),
 					);
 
-	
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
-				},
+				}
 				_ => {}
 			}
 			match c {
@@ -103,9 +101,9 @@ fn main() {
 						&glm::quat_inverse(&camera.rotation),
 						&glm::vec3(0.0, 1.0, 0.0),
 					);
-	
+
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
-				},
+				}
 				_ => {}
 			}
 			match space {
@@ -114,9 +112,9 @@ fn main() {
 						&glm::quat_inverse(&camera.rotation),
 						&glm::vec3(0.0, -1.0, 0.0),
 					);
-	
+
 					movement += direction * CAMERA_MOVE_SPEED * delta_time as f32;
-				},
+				}
 				_ => {}
 			}
 		}
@@ -193,10 +191,10 @@ fn main() {
 						},
 					..
 				} => space = state.to_owned(),
-				
+
 				_ => {}
 			},
-			Event::DeviceEvent {event, ..} => match event {
+			Event::DeviceEvent { event, .. } => match event {
 				DeviceEvent::MouseMotion { delta } => {
 					let right = glm::quat_rotate_vec3(
 						&glm::quat_inverse(&camera.rotation),
@@ -204,10 +202,14 @@ fn main() {
 					);
 					let up = glm::vec3(0.0_f32, -1.0, 0.0);
 
-					camera.rotation = glm::quat_rotate(&camera.rotation, delta.0 as f32 * delta_time as f32, &up);
-					camera.rotation = glm::quat_rotate(&camera.rotation, delta.1 as f32 * delta_time as f32, &right);
-
-				},
+					camera.rotation =
+						glm::quat_rotate(&camera.rotation, delta.0 as f32 * delta_time as f32, &up);
+					camera.rotation = glm::quat_rotate(
+						&camera.rotation,
+						delta.1 as f32 * delta_time as f32,
+						&right,
+					);
+				}
 				_ => {}
 			},
 			Event::MainEventsCleared => {
