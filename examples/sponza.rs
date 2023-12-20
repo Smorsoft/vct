@@ -8,16 +8,16 @@ use winit::{
 };
 
 const CAMERA_MOVE_SPEED: f32 = 10.0;
+const CAMERA_ROTATION_SPEED: f32 = 10.0;
 
 fn main() {
-	use winit::{
-		event::*,
-		event_loop::{ControlFlow, EventLoop},
-		window::WindowBuilder,
-	};
-
 	let event_loop = EventLoop::new();
 	let window = WindowBuilder::new().build(&event_loop).unwrap();
+	window
+		.set_cursor_grab(winit::window::CursorGrabMode::Confined)
+		.unwrap();
+
+	window.set_maximized(true);
 
 	let mut app = pollster::block_on(App::new(&window));
 	let _cameras = app.load_gltf("examples/Sponza/Sponza.gltf", true);
@@ -127,6 +127,9 @@ fn main() {
 				ref event,
 				window_id,
 			} if window_id == window.id() => match event {
+				WindowEvent::Resized(size) => {
+					app.renderer.resize(size.width, size.height);
+				},
 				WindowEvent::CloseRequested
 				| WindowEvent::KeyboardInput {
 					input:
@@ -198,15 +201,15 @@ fn main() {
 				DeviceEvent::MouseMotion { delta } => {
 					let right = glm::quat_rotate_vec3(
 						&glm::quat_inverse(&camera.rotation),
-						&glm::vec3(-1.0, 0.0, 0.0),
+						&glm::vec3(1.0, 0.0, 0.0),
 					);
-					let up = glm::vec3(0.0_f32, -1.0, 0.0);
+					let up = glm::vec3(0.0_f32, 1.0, 0.0);
 
 					camera.rotation =
-						glm::quat_rotate(&camera.rotation, delta.0 as f32 * delta_time as f32, &up);
+						glm::quat_rotate(&camera.rotation, delta.0 as f32 * delta_time as f32 * CAMERA_ROTATION_SPEED, &up);
 					camera.rotation = glm::quat_rotate(
 						&camera.rotation,
-						delta.1 as f32 * delta_time as f32,
+						delta.1 as f32 * delta_time as f32* CAMERA_ROTATION_SPEED,
 						&right,
 					);
 				}
