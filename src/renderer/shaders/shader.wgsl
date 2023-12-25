@@ -52,6 +52,7 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(
+	@builtin(instance_index) instance_index: u32, 
 	model: VertexInput,
 ) -> VertexOutput {
 	var out: VertexOutput;

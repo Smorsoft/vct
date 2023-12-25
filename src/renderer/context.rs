@@ -25,6 +25,11 @@ impl GraphicsContext {
 			.await
 			.unwrap();
 
+		let mut limits = wgpu::Limits::default();
+		limits.max_storage_buffer_binding_size = 1_073_741_824;
+		limits.max_uniform_buffer_binding_size = 1_073_741_824;
+		limits.max_buffer_size = 1_073_741_824;
+
 		let (device, queue) = adapter
 			.request_device(
 				&wgpu::DeviceDescriptor {
@@ -32,7 +37,7 @@ impl GraphicsContext {
 					features: wgpu::Features::empty(),
 					// WebGL doesn't support all of wgpu's features, so if
 					// we're building for the web we'll have to disable some.
-					limits: wgpu::Limits::default(),
+					limits,
 				},
 				None,
 			)

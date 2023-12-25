@@ -20,7 +20,7 @@ fn main() {
 	window.set_maximized(true);
 
 	let mut app = pollster::block_on(App::new(&window));
-	let _cameras = app.load_gltf("examples/Sponza/Sponza.gltf", true);
+	// let _cameras = app.load_gltf("examples/Sponza/Sponza.gltf", true);
 	// .load_gltf("examples/Box.glb", true);
 
 	let mut camera = camera::Camera {

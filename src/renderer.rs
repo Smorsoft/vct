@@ -1,8 +1,8 @@
-use std::{collections::HashMap, ops::ControlFlow, pin::Pin};
+use std::pin::Pin;
 
 use winit::window::Window;
 
-mod context;
+pub mod context;
 pub mod lights;
 pub mod mesh;
 mod render_pass;
@@ -18,6 +18,7 @@ pub struct Renderer {
 	pub material_bind_group_layout: wgpu::BindGroupLayout,
 	pub camera_bind_group: wgpu::BindGroup,
 	pub depth_buffer: mesh::Texture,
+	pub voxelization: voxelization::Voxelization,
 }
 
 impl Renderer {
@@ -205,8 +206,12 @@ impl Renderer {
 
 		let depth_buffer = mesh::Texture::create_depth_texture(&context.device, &context.config);
 
+		let pinned_context = Box::pin(context);
+
+		let voxelization = voxelization::Voxelization::new(&pinned_context);
+
 		Self {
-			context: Box::pin(context),
+			context: pinned_context,
 			camera_buffer,
 			meshes: Vec::new(),
 			materials: Vec::new(),
@@ -215,15 +220,19 @@ impl Renderer {
 			material_bind_group_layout,
 			camera_bind_group,
 			depth_buffer,
+			voxelization,
 		}
 	}
 
 	pub fn resize(&mut self, width: u32, height: u32) {
 		self.context.config.width = width;
 		self.context.config.height = height;
-		self.context.surface.configure(&self.context.device, &self.context.config);
+		self.context
+			.surface
+			.configure(&self.context.device, &self.context.config);
 
-		self.depth_buffer = mesh::Texture::create_depth_texture(&self.context.device, &self.context.config)
+		self.depth_buffer =
+			mesh::Texture::create_depth_texture(&self.context.device, &self.context.config)
 	}
 
 	pub fn update_camera(&mut self, camera: &super::camera::Camera) {
@@ -231,70 +240,73 @@ impl Renderer {
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-		let output = self.context.surface.get_current_texture()?;
+		// let output = self.context.surface.get_current_texture()?;
 
-		let view = output
-			.texture
-			.create_view(&wgpu::TextureViewDescriptor::default());
+		// let view = output
+		// 	.texture
+		// 	.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let mut encoder =
-			self.context
-				.device
-				.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-					label: Some("Render Encoder"),
-				});
+		// let mut encoder =
+		// 	self.context
+		// 		.device
+		// 		.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+		// 			label: Some("Render Encoder"),
+		// 		});
 
-		{
-			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-				label: Some("Render Pass"),
-				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-					view: &view,
-					resolve_target: None,
-					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color {
-							r: 0.0,
-							g: 0.0,
-							b: 0.0,
-							a: 1.0,
-						}),
-						store: wgpu::StoreOp::Store,
-					},
-				})],
-				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-					view: &self.depth_buffer.view,
-					depth_ops: Some(wgpu::Operations {
-						load: wgpu::LoadOp::Clear(1.0),
-						store: wgpu::StoreOp::Store,
-					}),
-					stencil_ops: None,
-				}),
-				occlusion_query_set: None,
-				timestamp_writes: None,
-			});
-			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+		// {
+		// 	let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+		// 		label: Some("Render Pass"),
+		// 		color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+		// 			view: &view,
+		// 			resolve_target: None,
+		// 			ops: wgpu::Operations {
+		// 				load: wgpu::LoadOp::Clear(wgpu::Color {
+		// 					r: 0.0,
+		// 					g: 0.0,
+		// 					b: 0.0,
+		// 					a: 1.0,
+		// 				}),
+		// 				store: wgpu::StoreOp::Store,
+		// 			},
+		// 		})],
+		// 		depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+		// 			view: &self.depth_buffer.view,
+		// 			depth_ops: Some(wgpu::Operations {
+		// 				load: wgpu::LoadOp::Clear(1.0),
+		// 				store: wgpu::StoreOp::Store,
+		// 			}),
+		// 			stencil_ops: None,
+		// 		}),
+		// 		occlusion_query_set: None,
+		// 		timestamp_writes: None,
+		// 	});
 
-			for mesh in self.meshes.iter() {
-				render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
-				render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-				render_pass
-					.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-				for primitive in mesh.primitives.iter() {
-					render_pass.set_bind_group(
-						2,
-						&self.materials[primitive.material].bind_group,
-						&[],
-					);
-					render_pass.draw_indexed(
-						(primitive.start as u32)..(primitive.end as u32),
-						0,
-						0..1,
-					);
-				}
-			}
-		}
-		self.context.queue.submit(std::iter::once(encoder.finish()));
-		output.present();
+		// 	render_pass.set_pipeline(&self.render_pipeline);
+		// 	render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+
+		// 	for mesh in self.meshes.iter() {
+		// 		render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
+		// 		render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+		// 		render_pass
+		// 			.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+		// 		for primitive in mesh.primitives.iter() {
+		// 			render_pass.set_bind_group(
+		// 				2,
+		// 				&self.materials[primitive.material].bind_group,
+		// 				&[],
+		// 			);
+		// 			render_pass.draw_indexed(
+		// 				(primitive.start as u32)..(primitive.end as u32),
+		// 				0,
+		// 				0..1,
+		// 			);
+		// 		}
+		// 	}
+		// }
+		// self.context.queue.submit(std::iter::once(encoder.finish()));
+		// output.present();
+
+		self.voxelization.render(&self.context, &self.depth_buffer, &self.camera_bind_group);
 
 		return Ok(());
 	}
@@ -510,7 +522,7 @@ impl Renderer {
 					address_mode_v: wgpu::AddressMode::Repeat,
 					address_mode_w: wgpu::AddressMode::Repeat,
 					mag_filter: wgpu::FilterMode::Nearest,
-					min_filter: wgpu::FilterMode::Nearest,
+					min_filter: wgpu::FilterMode::Linear,
 					..Default::default()
 				});
 		};
@@ -532,15 +544,16 @@ impl Renderer {
 
 					let (texture, view) =
 						self.get_texture(&data[..], texture_data.width, texture_data.height);
-
-					// let sampler = self.context.device.create_sampler(&wgpu::SamplerDescriptor {
-					// 	label: Some("Custom Sampler"),
-					// 	address_mode_u: texture_info.texture().sampler().
-
-					// });
-
 					let sampler = new_default_sampler(&self);
-
+					(texture, view, sampler)
+				}
+				gltf::image::Format::R8G8B8A8 => {
+					let (texture, view) = self.get_texture(
+						&texture_data.pixels,
+						texture_data.width,
+						texture_data.height,
+					);
+					let sampler = new_default_sampler(&self);
 					(texture, view, sampler)
 				}
 				_ => {
