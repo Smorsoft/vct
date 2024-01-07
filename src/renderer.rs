@@ -240,73 +240,73 @@ impl Renderer {
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-		// let output = self.context.surface.get_current_texture()?;
+		let output = self.context.surface.get_current_texture()?;
 
-		// let view = output
-		// 	.texture
-		// 	.create_view(&wgpu::TextureViewDescriptor::default());
+		let view = output
+			.texture
+			.create_view(&wgpu::TextureViewDescriptor::default());
 
-		// let mut encoder =
-		// 	self.context
-		// 		.device
-		// 		.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-		// 			label: Some("Render Encoder"),
-		// 		});
+		let mut encoder =
+			self.context
+				.device
+				.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+					label: Some("Render Encoder"),
+				});
 
-		// {
-		// 	let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-		// 		label: Some("Render Pass"),
-		// 		color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-		// 			view: &view,
-		// 			resolve_target: None,
-		// 			ops: wgpu::Operations {
-		// 				load: wgpu::LoadOp::Clear(wgpu::Color {
-		// 					r: 0.0,
-		// 					g: 0.0,
-		// 					b: 0.0,
-		// 					a: 1.0,
-		// 				}),
-		// 				store: wgpu::StoreOp::Store,
-		// 			},
-		// 		})],
-		// 		depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-		// 			view: &self.depth_buffer.view,
-		// 			depth_ops: Some(wgpu::Operations {
-		// 				load: wgpu::LoadOp::Clear(1.0),
-		// 				store: wgpu::StoreOp::Store,
-		// 			}),
-		// 			stencil_ops: None,
-		// 		}),
-		// 		occlusion_query_set: None,
-		// 		timestamp_writes: None,
-		// 	});
+		{
+			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: Some("Render Pass"),
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &view,
+					resolve_target: None,
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color {
+							r: 0.0,
+							g: 0.0,
+							b: 0.0,
+							a: 1.0,
+						}),
+						store: wgpu::StoreOp::Store,
+					},
+				})],
+				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+					view: &self.depth_buffer.view,
+					depth_ops: Some(wgpu::Operations {
+						load: wgpu::LoadOp::Clear(1.0),
+						store: wgpu::StoreOp::Store,
+					}),
+					stencil_ops: None,
+				}),
+				occlusion_query_set: None,
+				timestamp_writes: None,
+			});
 
-		// 	render_pass.set_pipeline(&self.render_pipeline);
-		// 	render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+			render_pass.set_pipeline(&self.render_pipeline);
+			render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
-		// 	for mesh in self.meshes.iter() {
-		// 		render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
-		// 		render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-		// 		render_pass
-		// 			.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-		// 		for primitive in mesh.primitives.iter() {
-		// 			render_pass.set_bind_group(
-		// 				2,
-		// 				&self.materials[primitive.material].bind_group,
-		// 				&[],
-		// 			);
-		// 			render_pass.draw_indexed(
-		// 				(primitive.start as u32)..(primitive.end as u32),
-		// 				0,
-		// 				0..1,
-		// 			);
-		// 		}
-		// 	}
-		// }
-		// self.context.queue.submit(std::iter::once(encoder.finish()));
-		// output.present();
+			for mesh in self.meshes.iter() {
+				render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
+				render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+				render_pass
+					.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+				for primitive in mesh.primitives.iter() {
+					render_pass.set_bind_group(
+						2,
+						&self.materials[primitive.material].bind_group,
+						&[],
+					);
+					render_pass.draw_indexed(
+						(primitive.start as u32)..(primitive.end as u32),
+						0,
+						0..1,
+					);
+				}
+			}
+		}
+		self.context.queue.submit(std::iter::once(encoder.finish()));
+		output.present();
 
-		self.voxelization.render(&self.context, &self.depth_buffer, &self.camera_bind_group);
+		// self.voxelization.render(&self.context, &self.depth_buffer, &self.camera_bind_group);
 
 		return Ok(());
 	}
