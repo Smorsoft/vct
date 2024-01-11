@@ -22,6 +22,14 @@ impl App {
 		path: P,
 		is_static: bool,
 	) -> Vec<camera::Camera> {
-		self.renderer.load_gltf(path, is_static)
+		renderer::load_gltf::load_gltf(
+			&self.renderer.context,
+			&mut self.renderer.meshes,
+			&mut self.renderer.materials,
+			&self.renderer.model_bind_group_layout,
+			&self.renderer.material_bind_group_layout,
+			path,
+			is_static,
+		)
 	}
 }

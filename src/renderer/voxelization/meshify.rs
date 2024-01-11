@@ -1,8 +1,7 @@
 use std::pin::Pin;
-
 use wgpu::util::DeviceExt;
 
-use super::context::GraphicsContext;
+use crate::renderer::context::GraphicsContext;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -34,12 +33,11 @@ impl Vertex {
 	}
 }
 
-pub struct Voxelization {
-	voxel_texture: super::mesh::Texture,
+
+pub struct Meshify {
 	empty_count_buffer: wgpu::Buffer,
 	count_buffer: wgpu::Buffer,
 	count_staging_buffer: wgpu::Buffer,
-	count_bind_group: wgpu::BindGroup,
 	count_pipeline: wgpu::ComputePipeline,
 	instance_pipeline: wgpu::ComputePipeline,
 	render_pipeline: wgpu::RenderPipeline,
@@ -47,17 +45,14 @@ pub struct Voxelization {
 	index_buffer: Option<wgpu::Buffer>,
 }
 
-impl Voxelization {
+impl Meshify {
 	pub fn new(context: &Pin<Box<GraphicsContext>>) -> Self {
-		let voxel_texture =
-			super::mesh::Texture::create_voxel_texture(&context.device, &context.queue);
-
 		let count_shader = context
 			.device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
 				label: Some("Count Pass Shader"),
 				source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-					"shaders/count_voxels.wgsl"
+					"../shaders/count_voxels.wgsl"
 				))),
 			});
 
@@ -97,30 +92,12 @@ impl Voxelization {
 					entry_point: "get_voxel_sum",
 				});
 
-		let count_bind_group_layout = count_pipeline.get_bind_group_layout(0);
-		let count_bind_group = context
-			.device
-			.create_bind_group(&wgpu::BindGroupDescriptor {
-				label: None,
-				layout: &count_bind_group_layout,
-				entries: &[
-					wgpu::BindGroupEntry {
-						binding: 0,
-						resource: wgpu::BindingResource::TextureView(&voxel_texture.view),
-					},
-					wgpu::BindGroupEntry {
-						binding: 1,
-						resource: count_buffer.as_entire_binding(),
-					},
-				],
-			});
-
 		let instance_shader = context
 			.device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
 				label: Some("Voxel Instance Shader"),
 				source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-					"shaders/voxel_instancing.wgsl"
+					"../shaders/voxel_instancing.wgsl"
 				))),
 			});
 
@@ -138,7 +115,7 @@ impl Voxelization {
 			.device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
 				label: Some("Shader"),
-				source: wgpu::ShaderSource::Wgsl(include_str!("shaders/voxel_render.wgsl").into()),
+				source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/voxel_render.wgsl").into()),
 			});
 
 		let camera_bind_group_layout =
@@ -197,7 +174,7 @@ impl Voxelization {
 						conservative: false,
 					},
 					depth_stencil: Some(wgpu::DepthStencilState {
-						format: super::mesh::Texture::DEPTH_FORMAT,
+						format: super::super::mesh::Texture::DEPTH_FORMAT,
 						depth_write_enabled: true,
 						depth_compare: wgpu::CompareFunction::Less,
 						stencil: wgpu::StencilState::default(),
@@ -211,26 +188,25 @@ impl Voxelization {
 					multiview: None,
 				});
 
-		let mut this = Self {
-			voxel_texture,
+		Self {
 			empty_count_buffer,
 			count_buffer,
 			count_staging_buffer,
-			count_bind_group,
 			count_pipeline,
 
 			instance_pipeline,
 			render_pipeline,
 			vertex_buffer: None,
 			index_buffer: None,
-		};
-
-		this.meshify(&context);
-
-		this
+		}
 	}
 
-	pub fn meshify(&mut self, context: &Pin<Box<GraphicsContext>>) {
+	pub fn meshify(
+		&mut self, 
+		context: &Pin<Box<GraphicsContext>>,
+		voxels: &crate::renderer::mesh::Texture,
+
+	) {
 		let mut encoder = context
 			.device
 			.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -246,18 +222,36 @@ impl Voxelization {
 			std::mem::size_of::<i32>() as u64,
 		);
 
+		let count_bind_group_layout = self.count_pipeline.get_bind_group_layout(0);
+		let count_bind_group = context
+			.device
+			.create_bind_group(&wgpu::BindGroupDescriptor {
+				label: None,
+				layout: &count_bind_group_layout,
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: wgpu::BindingResource::TextureView(&voxels.view),
+					},
+					wgpu::BindGroupEntry {
+						binding: 1,
+						resource: self.count_buffer.as_entire_binding(),
+					},
+				],
+			});
+
 		{
 			let mut counter_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
 				label: Some("Count pass"),
 				timestamp_writes: None,
 			});
 
-			counter_pass.set_bind_group(0, &self.count_bind_group, &[]);
+			counter_pass.set_bind_group(0, &count_bind_group, &[]);
 			counter_pass.set_pipeline(&self.count_pipeline);
 			counter_pass.dispatch_workgroups(
-				self.voxel_texture.texture.size().width,
-				self.voxel_texture.texture.size().height,
-				self.voxel_texture.texture.size().depth_or_array_layers,
+				voxels.texture.size().width,
+				voxels.texture.size().height,
+				voxels.texture.size().depth_or_array_layers,
 			);
 		}
 
@@ -335,7 +329,7 @@ impl Voxelization {
 					entries: &[
 						wgpu::BindGroupEntry {
 							binding: 0,
-							resource: wgpu::BindingResource::TextureView(&self.voxel_texture.view),
+							resource: wgpu::BindingResource::TextureView(&voxels.view),
 						},
 						wgpu::BindGroupEntry {
 							binding: 1,
@@ -360,9 +354,9 @@ impl Voxelization {
 			instance_pass.set_bind_group(0, &bind_group, &[]);
 			instance_pass.set_pipeline(&self.instance_pipeline);
 			instance_pass.dispatch_workgroups(
-				self.voxel_texture.texture.size().width,
-				self.voxel_texture.texture.size().height,
-				self.voxel_texture.texture.size().depth_or_array_layers,
+				voxels.texture.size().width,
+				voxels.texture.size().height,
+				voxels.texture.size().depth_or_array_layers,
 			);
 		}
 
@@ -375,7 +369,7 @@ impl Voxelization {
 	pub fn render(
 		&mut self,
 		context: &Pin<Box<GraphicsContext>>,
-		depth_buffer: &super::mesh::Texture,
+		depth_buffer: &crate::renderer::mesh::Texture,
 		camera_bind_group: &wgpu::BindGroup,
 	) {
 		let mut encoder = context
@@ -388,7 +382,7 @@ impl Voxelization {
 
 		let view = output
 			.texture
-			.create_view(&wgpu::TextureViewDescriptor::default());
+			.create_view(&Default::default());
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -421,14 +415,14 @@ impl Voxelization {
 			render_pass.set_pipeline(&self.render_pipeline);
 			render_pass.set_bind_group(0, camera_bind_group, &[]);
 
-			render_pass.set_vertex_buffer(0, self.vertex_buffer.as_ref().unwrap().slice(..));
+			render_pass.set_vertex_buffer(0, self.vertex_buffer.as_ref().expect("meshify must be called before render").slice(..));
 			render_pass.set_index_buffer(
-				self.index_buffer.as_ref().unwrap().slice(..),
+				self.index_buffer.as_ref().expect("meshify must be called before render").slice(..),
 				wgpu::IndexFormat::Uint32,
 			);
 
 			render_pass.draw_indexed(
-				0..(self.index_buffer.as_ref().unwrap().size() as u32) / 4,
+				0..(self.index_buffer.as_ref().expect("meshify must be called before render").size() as u32) / 4,
 				0,
 				0..1,
 			);

@@ -24,9 +24,9 @@ fn main() {
 	// .load_gltf("examples/Box.glb", true);
 
 	let mut camera = camera::Camera {
-		position: [0.0, 0.0, -10.0].into(),
+		position: [0.0, 0.0, 0.0].into(),
 		rotation: glm::Quat::identity(),
-		aspect: 16.0 / 9.0,
+		aspect: ((window.inner_size().width as f32) / (window.inner_size().height as f32)),
 		fovy: 90.0,
 		znear: 0.001,
 		zfar: 100000000.0,
@@ -128,6 +128,7 @@ fn main() {
 				window_id,
 			} if window_id == window.id() => match event {
 				WindowEvent::Resized(size) => {
+					camera.aspect = ((window.inner_size().width as f32) / (window.inner_size().height as f32));
 					app.renderer.resize(size.width, size.height);
 				},
 				WindowEvent::CloseRequested

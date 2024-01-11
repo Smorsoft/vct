@@ -1,3 +1,5 @@
+const WIDTH = 100.0;
+
 struct Vertex {
     position: vec3<f32>,
     color: vec3<f32>,
@@ -24,13 +26,13 @@ fn main(@builtin(workgroup_id) workgroup_id : vec3<u32>,) {
             f32(textureDimensions(voxels_texture).g), 
             f32(textureDimensions(voxels_texture).b)
         );
-        var voxel_size: f32 = (30.0 / grid_size.r);
+        var voxel_size: f32 = (WIDTH / grid_size.r);
         var half_voxel_size: f32 = voxel_size / 2.0;
         var voxel_position: vec3<f32> = vec3(f32(workgroup_id.r), f32(workgroup_id.g), f32(workgroup_id.b));
         var center_position: vec3<f32> = vec3(
-            -15.0 + (voxel_position.r * voxel_size),
-            -15.0 + (voxel_position.g * voxel_size),
-            -15.0 + (voxel_position.b * voxel_size),
+            (-WIDTH/2.0) + (voxel_position.r * voxel_size),
+            (-WIDTH/2.0) + (voxel_position.g * voxel_size),
+            (-WIDTH/2.0) + (voxel_position.b * voxel_size),
         );
 
 
