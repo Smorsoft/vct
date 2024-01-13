@@ -19,7 +19,8 @@ pub struct Renderer {
 	pub material_bind_group_layout: wgpu::BindGroupLayout,
 	pub camera_bind_group: wgpu::BindGroup,
 	pub depth_buffer: mesh::Texture,
-	// pub voxelization: voxelization::Voxelization,
+	pub voxelization: voxelization::Voxelization,
+	pub render_voxels: bool,
 }
 
 impl Renderer {
@@ -78,10 +79,10 @@ impl Renderer {
 			context
 				.device
 				.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-					label: Some("Camera Bind group layout"),
+					label: Some("Model Bind group layout"),
 					entries: &[wgpu::BindGroupLayoutEntry {
 						binding: 0,
-						visibility: wgpu::ShaderStages::VERTEX,
+						visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::COMPUTE,
 						ty: wgpu::BindingType::Buffer {
 							ty: wgpu::BufferBindingType::Uniform,
 							has_dynamic_offset: false,
@@ -99,7 +100,7 @@ impl Renderer {
 					entries: &[
 						wgpu::BindGroupLayoutEntry {
 							binding: 0,
-							visibility: wgpu::ShaderStages::FRAGMENT,
+							visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Texture {
 								sample_type: wgpu::TextureSampleType::Float { filterable: true },
 								view_dimension: wgpu::TextureViewDimension::D2,
@@ -109,13 +110,13 @@ impl Renderer {
 						},
 						wgpu::BindGroupLayoutEntry {
 							binding: 1,
-							visibility: wgpu::ShaderStages::FRAGMENT,
+							visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 							count: None,
 						},
 						wgpu::BindGroupLayoutEntry {
 							binding: 2,
-							visibility: wgpu::ShaderStages::FRAGMENT,
+							visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Texture {
 								sample_type: wgpu::TextureSampleType::Float { filterable: true },
 								view_dimension: wgpu::TextureViewDimension::D2,
@@ -125,13 +126,13 @@ impl Renderer {
 						},
 						wgpu::BindGroupLayoutEntry {
 							binding: 3,
-							visibility: wgpu::ShaderStages::FRAGMENT,
+							visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 							count: None,
 						},
 						wgpu::BindGroupLayoutEntry {
 							binding: 4,
-							visibility: wgpu::ShaderStages::FRAGMENT,
+							visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Texture {
 								sample_type: wgpu::TextureSampleType::Float { filterable: true },
 								view_dimension: wgpu::TextureViewDimension::D2,
@@ -141,7 +142,7 @@ impl Renderer {
 						},
 						wgpu::BindGroupLayoutEntry {
 							binding: 5,
-							visibility: wgpu::ShaderStages::FRAGMENT,
+							visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 							count: None,
 						},
@@ -213,9 +214,11 @@ impl Renderer {
 
 		let pinned_context = Box::pin(context);
 
-		// let mut voxelization = voxelization::Voxelization::new(&pinned_context);
-
-		// voxelization.meshify(&pinned_context);
+		let voxelization = voxelization::Voxelization::new(
+			&pinned_context,
+			&model_bind_group_layout,
+			&material_bind_group_layout,
+		);
 
 		Self {
 			context: pinned_context,
@@ -227,7 +230,8 @@ impl Renderer {
 			material_bind_group_layout,
 			camera_bind_group,
 			depth_buffer,
-			// voxelization,
+			voxelization,
+			render_voxels: false,
 		}
 	}
 
@@ -246,72 +250,80 @@ impl Renderer {
 		camera.update(&mut self.context.queue, &mut self.camera_buffer)
 	}
 
+	pub fn voxelize(&mut self) {
+		self.voxelization
+			.voxelize(&self.context, &self.meshes, &self.materials);
+		self.voxelization.meshify(&self.context);
+	}
+
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-		let output = self.context.surface.get_current_texture()?;
+		if self.render_voxels {
+			self.voxelization
+				.render(&self.context, &self.depth_buffer, &self.camera_bind_group);
+		} else {
+			let output = self.context.surface.get_current_texture()?;
 
-		let view = output.texture.create_view(&Default::default());
+			let view = output.texture.create_view(&Default::default());
 
-		let mut encoder =
-			self.context
-				.device
-				.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-					label: Some("Render Encoder"),
+			let mut encoder =
+				self.context
+					.device
+					.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+						label: Some("Render Encoder"),
+					});
+
+			{
+				let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+					label: Some("Render Pass"),
+					color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+						view: &view,
+						resolve_target: None,
+						ops: wgpu::Operations {
+							load: wgpu::LoadOp::Clear(wgpu::Color {
+								r: 0.0,
+								g: 0.0,
+								b: 0.0,
+								a: 1.0,
+							}),
+							store: wgpu::StoreOp::Store,
+						},
+					})],
+					depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+						view: &self.depth_buffer.view,
+						depth_ops: Some(wgpu::Operations {
+							load: wgpu::LoadOp::Clear(1.0),
+							store: wgpu::StoreOp::Store,
+						}),
+						stencil_ops: None,
+					}),
+					occlusion_query_set: None,
+					timestamp_writes: None,
 				});
 
-		{
-			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-				label: Some("Render Pass"),
-				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-					view: &view,
-					resolve_target: None,
-					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color {
-							r: 0.0,
-							g: 0.0,
-							b: 0.0,
-							a: 1.0,
-						}),
-						store: wgpu::StoreOp::Store,
-					},
-				})],
-				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-					view: &self.depth_buffer.view,
-					depth_ops: Some(wgpu::Operations {
-						load: wgpu::LoadOp::Clear(1.0),
-						store: wgpu::StoreOp::Store,
-					}),
-					stencil_ops: None,
-				}),
-				occlusion_query_set: None,
-				timestamp_writes: None,
-			});
+				render_pass.set_pipeline(&self.render_pipeline);
+				render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
-			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-
-			for mesh in self.meshes.iter() {
-				render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
-				render_pass
-					.set_vertex_buffer(0, mesh.vertex_buffer.slice(mesh.positions.to_owned()));
-				render_pass.set_vertex_buffer(1, mesh.vertex_buffer.slice(mesh.normals.to_owned()));
-				render_pass.set_vertex_buffer(2, mesh.vertex_buffer.slice(mesh.colors.to_owned()));
-				render_pass
-					.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-				for primitive in mesh.primitives.iter() {
-					render_pass.set_bind_group(
-						2,
-						&self.materials[&primitive.material].bind_group,
-						&[],
-					);
-					render_pass.draw_indexed(primitive.index.to_owned(), 0, 0..1);
+				for mesh in self.meshes.iter() {
+					render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
+					render_pass
+						.set_vertex_buffer(0, mesh.vertex_buffer.slice(mesh.positions.to_owned()));
+					render_pass.set_vertex_buffer(1, mesh.vertex_buffer.slice(mesh.normals.to_owned()));
+					render_pass.set_vertex_buffer(2, mesh.vertex_buffer.slice(mesh.colors.to_owned()));
+					render_pass
+						.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+					for primitive in mesh.primitives.iter() {
+						render_pass.set_bind_group(
+							2,
+							&self.materials[&primitive.material].bind_group,
+							&[],
+						);
+						render_pass.draw_indexed(primitive.index.to_owned(), 0, 0..1);
+					}
 				}
 			}
+			self.context.queue.submit(std::iter::once(encoder.finish()));
+			output.present();
 		}
-		self.context.queue.submit(std::iter::once(encoder.finish()));
-		output.present();
-
-		// self.voxelization
-		// 	.render(&self.context, &self.depth_buffer, &self.camera_bind_group);
 
 		return Ok(());
 	}

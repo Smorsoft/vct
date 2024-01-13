@@ -22,7 +22,7 @@ impl App {
 		path: P,
 		is_static: bool,
 	) -> Vec<camera::Camera> {
-		renderer::load_gltf::load_gltf(
+		let cameras = renderer::load_gltf::load_gltf(
 			&self.renderer.context,
 			&mut self.renderer.meshes,
 			&mut self.renderer.materials,
@@ -30,6 +30,10 @@ impl App {
 			&self.renderer.material_bind_group_layout,
 			path,
 			is_static,
-		)
+		);
+
+		self.renderer.voxelize();
+
+		return cameras;
 	}
 }

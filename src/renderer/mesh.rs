@@ -149,8 +149,8 @@ impl VertexColors {
 	}
 }
 
-// #[repr(C)]
-// pub struct VertexSkinning {
-// 	pub joint_index: [u16; 4],
-// 	pub joint_weight: [u16; 4],
-// }
+#[repr(C)]
+pub struct VertexSkinning {
+	pub joint_index: [u16; 4],
+	pub joint_weight: [u16; 4],
+}

@@ -195,6 +195,19 @@ fn main() {
 						},
 					..
 				} => space = state.to_owned(),
+				WindowEvent::KeyboardInput {
+					input: KeyboardInput {
+						state,
+						virtual_keycode: Some(VirtualKeyCode::Q),
+						..
+					},
+					..
+				} => match *state {
+					winit::event::ElementState::Pressed => {
+						app.renderer.render_voxels = !app.renderer.render_voxels;
+					},
+					_ => {}
+				}
 
 				_ => {}
 			},

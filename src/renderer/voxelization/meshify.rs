@@ -33,12 +33,13 @@ impl Vertex {
 	}
 }
 
-
 pub struct Meshify {
 	empty_count_buffer: wgpu::Buffer,
 	count_buffer: wgpu::Buffer,
 	count_staging_buffer: wgpu::Buffer,
+	count_bind_group_layout: wgpu::BindGroupLayout,
 	count_pipeline: wgpu::ComputePipeline,
+	instance_bind_group_layout: wgpu::BindGroupLayout,
 	instance_pipeline: wgpu::ComputePipeline,
 	render_pipeline: wgpu::RenderPipeline,
 	vertex_buffer: Option<wgpu::Buffer>,
@@ -82,12 +83,51 @@ impl Meshify {
 			mapped_at_creation: false,
 		});
 
+		let count_bind_group_layout =
+			context
+				.device
+				.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+					label: None,
+					entries: &[
+						wgpu::BindGroupLayoutEntry {
+							binding: 0,
+							visibility: wgpu::ShaderStages::COMPUTE,
+							ty: wgpu::BindingType::Texture {
+								sample_type: wgpu::TextureSampleType::Float {
+									filterable: false,
+								},
+								view_dimension: wgpu::TextureViewDimension::D3,
+								multisampled: false,
+							},
+							count: None,
+						},
+						wgpu::BindGroupLayoutEntry {
+							binding: 1,
+							visibility: wgpu::ShaderStages::COMPUTE,
+							ty: wgpu::BindingType::Buffer {
+								ty: wgpu::BufferBindingType::Storage { read_only: false },
+								has_dynamic_offset: false,
+								min_binding_size: None,
+							},
+							count: None,
+						},
+					],
+				});
+
+		let count_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: None,
+			bind_group_layouts: &[
+				&count_bind_group_layout,
+			],
+			push_constant_ranges: &[]
+		});
+
 		let count_pipeline =
 			context
 				.device
 				.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 					label: Some("Voxel Count Pass"),
-					layout: None,
+					layout: Some(&count_pipeline_layout),
 					module: &count_shader,
 					entry_point: "get_voxel_sum",
 				});
@@ -101,12 +141,75 @@ impl Meshify {
 				))),
 			});
 
+		let instance_bind_group_layout =
+			context
+				.device
+				.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+					label: None,
+					entries: &[
+						wgpu::BindGroupLayoutEntry {
+							binding: 0,
+							visibility: wgpu::ShaderStages::COMPUTE,
+							ty: wgpu::BindingType::Texture {
+								sample_type: wgpu::TextureSampleType::Float {
+									filterable: false,
+								},
+								view_dimension: wgpu::TextureViewDimension::D3,
+								multisampled: false,
+							},
+							count: None,
+						},
+						wgpu::BindGroupLayoutEntry {
+							binding: 1,
+							visibility: wgpu::ShaderStages::COMPUTE,
+							ty: wgpu::BindingType::Buffer {
+								ty: wgpu::BufferBindingType::Storage {
+									read_only: false,
+								},
+								has_dynamic_offset: false,
+								min_binding_size: None,
+							},
+							count: None,
+						},
+						wgpu::BindGroupLayoutEntry {
+							binding: 2,
+							visibility: wgpu::ShaderStages::COMPUTE,
+							ty: wgpu::BindingType::Buffer {
+								ty: wgpu::BufferBindingType::Storage {
+									read_only: false,
+								},
+								has_dynamic_offset: false,
+								min_binding_size: None,
+							},
+							count: None,
+						},
+						wgpu::BindGroupLayoutEntry {
+							binding: 3,
+							visibility: wgpu::ShaderStages::COMPUTE,
+							ty: wgpu::BindingType::Buffer {
+								ty: wgpu::BufferBindingType::Storage { read_only: false },
+								has_dynamic_offset: false,
+								min_binding_size: None,
+							},
+							count: None,
+						},
+					],
+				});
+
+		let instance_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: None,
+			bind_group_layouts: &[
+				&instance_bind_group_layout,
+			],
+			push_constant_ranges: &[]
+		});
+
 		let instance_pipeline =
 			context
 				.device
 				.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 					label: Some("Voxel Instancing Pass"),
-					layout: None,
+					layout: Some(&instance_pipeline_layout),
 					module: &instance_shader,
 					entry_point: "main",
 				});
@@ -115,7 +218,9 @@ impl Meshify {
 			.device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
 				label: Some("Shader"),
-				source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/voxel_render.wgsl").into()),
+				source: wgpu::ShaderSource::Wgsl(
+					include_str!("../shaders/voxel_render.wgsl").into(),
+				),
 			});
 
 		let camera_bind_group_layout =
@@ -192,8 +297,10 @@ impl Meshify {
 			empty_count_buffer,
 			count_buffer,
 			count_staging_buffer,
+			count_bind_group_layout,
 			count_pipeline,
 
+			instance_bind_group_layout,
 			instance_pipeline,
 			render_pipeline,
 			vertex_buffer: None,
@@ -202,10 +309,9 @@ impl Meshify {
 	}
 
 	pub fn meshify(
-		&mut self, 
+		&mut self,
 		context: &Pin<Box<GraphicsContext>>,
 		voxels: &crate::renderer::mesh::Texture,
-
 	) {
 		let mut encoder = context
 			.device
@@ -222,12 +328,11 @@ impl Meshify {
 			std::mem::size_of::<i32>() as u64,
 		);
 
-		let count_bind_group_layout = self.count_pipeline.get_bind_group_layout(0);
 		let count_bind_group = context
 			.device
 			.create_bind_group(&wgpu::BindGroupDescriptor {
 				label: None,
-				layout: &count_bind_group_layout,
+				layout: &self.count_bind_group_layout,
 				entries: &[
 					wgpu::BindGroupEntry {
 						binding: 0,
@@ -305,6 +410,10 @@ impl Meshify {
 			std::mem::size_of::<i32>() as u64,
 		);
 
+		if count <= 0 {
+			return;
+		}
+
 		let vertex_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("Voxel Vertex Buffer"),
 			size: count as u64 * (std::mem::size_of::<Vertex>() * 8) as u64,
@@ -320,12 +429,11 @@ impl Meshify {
 		});
 
 		{
-			let bind_group_layout = self.instance_pipeline.get_bind_group_layout(0);
 			let bind_group = context
 				.device
 				.create_bind_group(&wgpu::BindGroupDescriptor {
 					label: Some("Voxel Instancing Bindgroup"),
-					layout: &bind_group_layout,
+					layout: &self.instance_bind_group_layout,
 					entries: &[
 						wgpu::BindGroupEntry {
 							binding: 0,
@@ -372,6 +480,10 @@ impl Meshify {
 		depth_buffer: &crate::renderer::mesh::Texture,
 		camera_bind_group: &wgpu::BindGroup,
 	) {
+		if self.vertex_buffer.is_none() {
+			return;
+		}
+
 		let mut encoder = context
 			.device
 			.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -380,9 +492,7 @@ impl Meshify {
 
 		let output = context.surface.get_current_texture().unwrap();
 
-		let view = output
-			.texture
-			.create_view(&Default::default());
+		let view = output.texture.create_view(&Default::default());
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -415,14 +525,27 @@ impl Meshify {
 			render_pass.set_pipeline(&self.render_pipeline);
 			render_pass.set_bind_group(0, camera_bind_group, &[]);
 
-			render_pass.set_vertex_buffer(0, self.vertex_buffer.as_ref().expect("meshify must be called before render").slice(..));
+			render_pass.set_vertex_buffer(
+				0,
+				self.vertex_buffer
+					.as_ref()
+					.expect("meshify must be called before render")
+					.slice(..),
+			);
 			render_pass.set_index_buffer(
-				self.index_buffer.as_ref().expect("meshify must be called before render").slice(..),
+				self.index_buffer
+					.as_ref()
+					.expect("meshify must be called before render")
+					.slice(..),
 				wgpu::IndexFormat::Uint32,
 			);
 
 			render_pass.draw_indexed(
-				0..(self.index_buffer.as_ref().expect("meshify must be called before render").size() as u32) / 4,
+				0..(self
+					.index_buffer
+					.as_ref()
+					.expect("meshify must be called before render")
+					.size() as u32) / 4,
 				0,
 				0..1,
 			);
