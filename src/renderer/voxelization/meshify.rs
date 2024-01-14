@@ -93,9 +93,7 @@ impl Meshify {
 							binding: 0,
 							visibility: wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Texture {
-								sample_type: wgpu::TextureSampleType::Float {
-									filterable: false,
-								},
+								sample_type: wgpu::TextureSampleType::Float { filterable: false },
 								view_dimension: wgpu::TextureViewDimension::D3,
 								multisampled: false,
 							},
@@ -114,13 +112,14 @@ impl Meshify {
 					],
 				});
 
-		let count_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-			label: None,
-			bind_group_layouts: &[
-				&count_bind_group_layout,
-			],
-			push_constant_ranges: &[]
-		});
+		let count_pipeline_layout =
+			context
+				.device
+				.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+					label: None,
+					bind_group_layouts: &[&count_bind_group_layout],
+					push_constant_ranges: &[],
+				});
 
 		let count_pipeline =
 			context
@@ -151,9 +150,7 @@ impl Meshify {
 							binding: 0,
 							visibility: wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Texture {
-								sample_type: wgpu::TextureSampleType::Float {
-									filterable: false,
-								},
+								sample_type: wgpu::TextureSampleType::Float { filterable: false },
 								view_dimension: wgpu::TextureViewDimension::D3,
 								multisampled: false,
 							},
@@ -163,9 +160,7 @@ impl Meshify {
 							binding: 1,
 							visibility: wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Storage {
-									read_only: false,
-								},
+								ty: wgpu::BufferBindingType::Storage { read_only: false },
 								has_dynamic_offset: false,
 								min_binding_size: None,
 							},
@@ -175,9 +170,7 @@ impl Meshify {
 							binding: 2,
 							visibility: wgpu::ShaderStages::COMPUTE,
 							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Storage {
-									read_only: false,
-								},
+								ty: wgpu::BufferBindingType::Storage { read_only: false },
 								has_dynamic_offset: false,
 								min_binding_size: None,
 							},
@@ -196,13 +189,14 @@ impl Meshify {
 					],
 				});
 
-		let instance_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-			label: None,
-			bind_group_layouts: &[
-				&instance_bind_group_layout,
-			],
-			push_constant_ranges: &[]
-		});
+		let instance_pipeline_layout =
+			context
+				.device
+				.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+					label: None,
+					bind_group_layouts: &[&instance_bind_group_layout],
+					push_constant_ranges: &[],
+				});
 
 		let instance_pipeline =
 			context
