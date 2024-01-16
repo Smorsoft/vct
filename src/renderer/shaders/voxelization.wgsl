@@ -15,7 +15,6 @@ struct Triangle {
 	vertices: array<Vertex, 3>,
 	bounds_min: vec3<f32>,
 	bounds_max: vec3<f32>,
-    normal: vec3<f32>,
     dom_axis: i32,
 };
 
@@ -121,7 +120,6 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>) {
 fn get_triangle(indices_index: u32, voxel_size: f32) -> Triangle {
     var triangle: Triangle;
 
-
     for (var i: u32 = 0u; i < 3u; i++) {
         var vertex: Vertex;
         let index: u32 = v_indices[indices_index + i];
@@ -132,13 +130,27 @@ fn get_triangle(indices_index: u32, voxel_size: f32) -> Triangle {
         triangle.vertices[i] = vertex;
     }
 
-    let normal = abs(cross(triangle.vertices[1].position - triangle.vertices[0].position, triangle.vertices[2].position - triangle.vertices[0].position));
-    let dom_normal = max(triangle.normal.x, max(triangle.normal.y, triangle.normal.z));
+	// Calc bounds
+    triangle.bounds_min = triangle.vertices[0].position;
+    triangle.bounds_max = triangle.vertices[0].position;
+    for (var i: i32 = 1; i < 3; i++) {
+		// Min
+        if triangle.vertices[i].position.x < triangle.bounds_min.x { triangle.bounds_min.x = triangle.vertices[i].position.x; }
+        if triangle.vertices[i].position.y < triangle.bounds_min.y { triangle.bounds_min.y = triangle.vertices[i].position.y; }
+        if triangle.vertices[i].position.z < triangle.bounds_min.z { triangle.bounds_min.z = triangle.vertices[i].position.z; }
+
+		// Max
+        if triangle.vertices[i].position.x > triangle.bounds_max.x { triangle.bounds_max.x = triangle.vertices[i].position.x; }
+        if triangle.vertices[i].position.y > triangle.bounds_max.y { triangle.bounds_max.y = triangle.vertices[i].position.y; }
+        if triangle.vertices[i].position.z > triangle.bounds_max.z { triangle.bounds_max.z = triangle.vertices[i].position.z; }
+    }
+
+    let delta_bounds = triangle.bounds_max - triangle.bounds_min;
 
     triangle.dom_axis = 0;
-    if dom_normal == triangle.normal.y {
+    if (delta_bounds.y > delta_bounds.x && delta_bounds.y > delta_bounds.z) {
         triangle.dom_axis = 1;
-    } else if dom_normal == triangle.normal.z {
+    } else if (delta_bounds.z > delta_bounds.x && delta_bounds.z > delta_bounds.y) {
         triangle.dom_axis = 2;
     }
 
@@ -158,56 +170,14 @@ fn get_triangle(indices_index: u32, voxel_size: f32) -> Triangle {
         triangle.vertices[2] = tmp;
     }
 
-	// Calc bounds
-    triangle.bounds_min = triangle.vertices[0].position;
-    triangle.bounds_max = triangle.vertices[0].position;
-    for (var i: i32 = 1; i < 3; i++) {
-		// Min
-        if triangle.vertices[i].position.x < triangle.bounds_min.x { triangle.bounds_min.x = triangle.vertices[i].position.x; }
-        if triangle.vertices[i].position.y < triangle.bounds_min.y { triangle.bounds_min.y = triangle.vertices[i].position.y; }
-        if triangle.vertices[i].position.z < triangle.bounds_min.z { triangle.bounds_min.z = triangle.vertices[i].position.z; }
-
-		// Max
-        if triangle.vertices[i].position.x > triangle.bounds_max.x { triangle.bounds_max.x = triangle.vertices[i].position.x; }
-        if triangle.vertices[i].position.y > triangle.bounds_max.y { triangle.bounds_max.y = triangle.vertices[i].position.y; }
-        if triangle.vertices[i].position.z > triangle.bounds_max.z { triangle.bounds_max.z = triangle.vertices[i].position.z; }
-    }
-
     return triangle;
 }
-
-struct ScanlineCache {
-	v1: vec3<f32>,
-	v2: vec3<f32>,
-	v3: vec3<f32>,
-
-	unit_dir_12: vec3<f32>,
-	unit_dir_13: vec3<f32>,
-	unit_dir_23: vec3<f32>,
-
-	proj_unit_dir_12: vec2<f32>,
-	proj_unit_dir_13: vec2<f32>,
-	proj_unit_dir_23: vec2<f32>,
-
-	length_dir_12: f32,
-	length_dir_13: f32,
-	min_length_dir_23: f32,
-	length_dir_23: f32,
-
-	scanline_length: f32,
-	scanline_inv_dir_axis: f32,
-	scanline_max_length: f32,
-
-	sl_inv_dot_dir_12: f32,
-	sl_inv_dot_dir_13: f32,
-	sl_inv_dot_dir_23: f32,
-};
 
 fn voxelize_point(triangle: Triangle, in_v: vec3<i32>, f_v: vec3<f32>) {
     let v0 = triangle.vertices[1].grid_position - triangle.vertices[0].grid_position;
     let v1 = triangle.vertices[2].grid_position - triangle.vertices[0].grid_position;
     let v2 = f_v - triangle.vertices[0].grid_position;
-    
+
     let d00 = dot(v0, v0);
     let d01 = dot(v0, v1);
     let d11 = dot(v1, v1);
@@ -231,11 +201,8 @@ fn voxelize_point(triangle: Triangle, in_v: vec3<i32>, f_v: vec3<f32>) {
         (color_b.x + color_b.y + color_b.z + color_b.w) / 4.0,
         (color_a.x + color_a.y + color_a.z + color_a.w) / 4.0,
     );
-    
+
     let texture_dim = textureDimensions(t_diffuse);
-    
-    // let color = textureLoad(t_diffuse, vec2(12), 0);
-    // let color = vec4(u, v, w, 1.0);
 
     textureStore(voxels_color, in_v, color);
 }
@@ -253,29 +220,7 @@ fn voxelize_line(triangle: Triangle, v1: vec3<f32>, v2: vec3<f32>) {
 
     voxelize_point(triangle, pos, v1);
 
-    var plane_x: f32;
-    if dir.x < 0.0 {
-        plane_x = ceil(v1.x - 1.0);
-    } else {
-        plane_x = floor(v1.x + 1.0);
-    }
-
-    var plane_y: f32;
-    if dir.y < 0.0 {
-        plane_y = ceil(v1.y - 1.0);
-    } else {
-        plane_y = floor(v1.y + 1.0);
-    }
-
-    var plane_z: f32;
-    if dir.z < 0.0 {
-        plane_z = ceil(v1.z - 1.0);
-    } else {
-        plane_z = floor(v1.z + 1.0);
-    }
-
-    let next_plane = vec3(plane_x, plane_y, plane_z);
-
+    let next_plane = ceil_or_floor_vec3(dir, v1);
 
     var t = (next_plane - v1) / unit_dir;
     let t_step = 1.0 / abs(unit_dir);
@@ -304,114 +249,43 @@ fn voxelize_line(triangle: Triangle, v1: vec3<f32>, v2: vec3<f32>) {
     }
 }
 
-fn calculate_scanline(in_cache: ScanlineCache, triangle: Triangle) -> ScanlineCache {
-    var cache = in_cache;
+fn voxelize_interior(triangle: Triangle) {
+    // TODO: Consider running a scanline between every dom_axis step while voxelizeing triangle edges
+    let next_plane = floor(triangle.vertices[0].grid_position[triangle.dom_axis] + 1.0);
+    let max_plane = triangle.vertices[2].grid_position[triangle.dom_axis] - 0.5;
 
-    var dir12 = triangle.vertices[1].grid_position - triangle.vertices[0].grid_position;
-    var dir13 = triangle.vertices[2].grid_position - triangle.vertices[0].grid_position;
-    var dir23 = triangle.vertices[2].grid_position - triangle.vertices[1].grid_position;
+    var plane = next_plane + 0.5;
 
-    cache.unit_dir_12 = normalize(dir12);
-    cache.unit_dir_13 = normalize(dir13);
-    cache.unit_dir_23 = normalize(dir23);
+    let dir01 = triangle.vertices[0].grid_position - triangle.vertices[1].grid_position;
+    let dir02 = triangle.vertices[0].grid_position - triangle.vertices[2].grid_position;
+    let dir12 = triangle.vertices[1].grid_position - triangle.vertices[2].grid_position;
 
-    let axis_x = (triangle.dom_axis + 1) % 3; // Not really the x axis
-    let axis_y = (triangle.dom_axis + 2) % 3; // Not really the y axis
+    let unit_dir01 = normalize(dir01);
+    let unit_dir02 = normalize(dir02);
+    let unit_dir12 = normalize(dir12);
 
-    cache.proj_unit_dir_12 = vec2(cache.unit_dir_12[axis_x], cache.unit_dir_12[axis_y]);
-    cache.proj_unit_dir_13 = vec2(cache.unit_dir_13[axis_x], cache.unit_dir_13[axis_y]);
-    cache.proj_unit_dir_23 = vec2(cache.unit_dir_23[axis_x], cache.unit_dir_23[axis_y]);
+    let dom_length_01 = triangle.vertices[1].grid_position[triangle.dom_axis] - triangle.vertices[0].grid_position[triangle.dom_axis];
+    let dom_length_02 = triangle.vertices[2].grid_position[triangle.dom_axis] - triangle.vertices[0].grid_position[triangle.dom_axis];
+    let dom_length_12 = triangle.vertices[2].grid_position[triangle.dom_axis] - triangle.vertices[1].grid_position[triangle.dom_axis];
 
-    var sl_dir: vec3<f32>;
-    if triangle.vertices[0].grid_position[triangle.dom_axis] != triangle.vertices[2].grid_position[triangle.dom_axis] {
-        sl_dir = cross(dir12, dir13);
-        let z = sl_dir[triangle.dom_axis];
-        sl_dir = -sl_dir * sign(z) / length(vec2(sl_dir[axis_x], sl_dir[axis_y]));
-        sl_dir[triangle.dom_axis] = abs(1.0 / sl_dir[triangle.dom_axis]);
-    } else {
-        sl_dir = dir13 / length(vec2(dir13[axis_x], dir13[axis_y]));
-    }
+    while plane < max_plane {
+        let t_02 = (plane - triangle.vertices[0].grid_position[triangle.dom_axis]) / dom_length_02;
+        let p_02 = triangle.vertices[0].grid_position - (t_02 * dir02);
 
-	// exact scanline length can cause missing scanlines due to rounding error
-    cache.scanline_length = (abs(sl_dir[axis_x]) + abs(sl_dir[axis_y])) * 0.999;
-
-    let proj_sl_dir = vec2(sl_dir[axis_x], sl_dir[axis_y]);
-
-	// Recalculate v2 so that the scanline always start from v1
-	// I.e. make dot(p2-v2, proj_sl_dir) = 0
-    let v2 = triangle.vertices[1].grid_position - cache.unit_dir_23 * dot(proj_sl_dir, vec2(dir12[axis_x], dir12[axis_y])) / dot(proj_sl_dir, cache.proj_unit_dir_23);
-    dir23 = triangle.vertices[2].grid_position - v2;
-
-    cache.v1 = triangle.vertices[0].grid_position;
-    cache.v2 = v2;
-    cache.v3 = triangle.vertices[2].grid_position;
-    cache.sl_inv_dot_dir_12 = 1.0 / dot(proj_sl_dir, cache.proj_unit_dir_12);
-    cache.sl_inv_dot_dir_13 = 1.0 / dot(proj_sl_dir, cache.proj_unit_dir_13);
-    cache.sl_inv_dot_dir_23 = 1.0 / dot(proj_sl_dir, cache.proj_unit_dir_23);
-    cache.length_dir_12 = length(dir12);
-    cache.length_dir_13 = length(dir13);
-    cache.min_length_dir_23 = length(triangle.vertices[1].grid_position - v2);
-    cache.length_dir_23 = length(triangle.vertices[2].grid_position - v2);
-    cache.scanline_inv_dir_axis = abs(1.0 / sl_dir[triangle.dom_axis]);
-    cache.scanline_max_length = dot(proj_sl_dir, vec2(dir13[axis_x], dir13[axis_y]));
-
-    return cache;
-}
-
-fn voxelize_scan_line(cache: ScanlineCache, triangle: Triangle, sl_length: f32, height: f32) {
-    var from_pos = cache.v1;
-    var from_dir = cache.unit_dir_12;
-    var inv_dot = cache.sl_inv_dot_dir_12;
-
-    if sl_length * cache.sl_inv_dot_dir_12 >= cache.length_dir_12 || sl_length * cache.sl_inv_dot_dir_12 < 0.0 {
-		// If this also out of range assume we are outside the triangle
-        if sl_length * cache.sl_inv_dot_dir_23 >= cache.length_dir_23 || sl_length * cache.sl_inv_dot_dir_23 <= cache.min_length_dir_23 {
-            return;
+        var end: vec3<f32>;
+        if triangle.vertices[1].grid_position[triangle.dom_axis] >= plane {
+            let t_01 = (plane - triangle.vertices[0].grid_position[triangle.dom_axis]) / dom_length_01;
+            let p_01 = triangle.vertices[0].grid_position - (t_01 * dir01);
+            end = p_01;
+        } else {
+            let t_12 = (plane - triangle.vertices[1].grid_position[triangle.dom_axis]) / dom_length_12;
+            let p_12 = triangle.vertices[1].grid_position - (t_12 * dir12);
+            end = p_12;
         }
 
-        from_pos = cache.v2;
-        from_dir = cache.unit_dir_23;
-        inv_dot = cache.sl_inv_dot_dir_23;
-    }
+        voxelize_line(triangle, p_02, end);
 
-    var from_vec = from_pos + from_dir * sl_length * inv_dot;
-    var to = cache.v1 + cache.unit_dir_13 * sl_length * cache.sl_inv_dot_dir_13;
-
-    from_vec[triangle.dom_axis] = height;
-    to[triangle.dom_axis] = height;
-
-    voxelize_line(triangle, from_vec, to);
-}
-
-fn voxelize_interior(triangle: Triangle) {
-    let next_plane = floor(triangle.vertices[0].grid_position[triangle.dom_axis] + 1.0);
-
-    var cache: ScanlineCache;
-    cache = calculate_scanline(cache, triangle);
-
-    var plane_t = (next_plane - triangle.vertices[0].grid_position[triangle.dom_axis]) * cache.scanline_inv_dir_axis;
-    var t = cache.scanline_length;
-
-    var plane = next_plane - 0.5;
-
-	// Triangle froms a line
-    // if cache.scanline_max_length <= 0.0 || cache.scanline_max_length >= 99.0 {
-    //     return;
-    // }
-
-    while true {
-        t = min(t, min(plane_t, cache.scanline_max_length));
-        if t >= cache.scanline_max_length { // Fully voxelized
-			break;
-		}
-        if t == plane_t { // New scanline slice
-            voxelize_scan_line(cache, triangle, t, plane);
-            plane += 1.0;
-            plane_t += cache.scanline_inv_dir_axis;
-		}
-
-        voxelize_scan_line(cache, triangle, t, plane);
-        t += cache.scanline_length;
+        plane += 1.0;
     }
 }
 
@@ -421,4 +295,34 @@ fn compare_vec(v1: vec3<i32>, v2: vec3<i32>) -> bool {
     } else {
         return false;
     }
+}
+
+fn i32v(in: vec3<f32>) -> vec3<i32> {
+    return vec3(i32(in.x), i32(in.y), i32(in.z));
+}
+
+fn debug_by_color(color: vec3<f32>) {
+    for (var x: i32 = 0; x < 50; x++) {
+        for (var y: i32 = 0; y < 50; y++) {
+            for (var z: i32 = 0; z < 50; z++) {
+                textureStore(voxels_color, vec3(x, y, z), vec4(color, 1.0));
+            }
+        }
+    }
+}
+
+fn ceil_or_floor(direction: f32, value: f32) -> f32 {
+    if direction < 0.0 {
+        return ceil(value - 1.0);
+    } else {
+        return floor(value + 1.0);
+    }
+}
+
+fn ceil_or_floor_vec3(direction: vec3<f32>, vector: vec3<f32>) -> vec3<f32> {
+    return vec3(
+        ceil_or_floor(direction.x, vector.x),
+        ceil_or_floor(direction.y, vector.y),
+        ceil_or_floor(direction.z, vector.z),
+    );
 }

@@ -26,6 +26,9 @@ impl GraphicsContext {
 			.unwrap();
 
 		let mut limits = wgpu::Limits::default();
+		limits.max_buffer_size = 268_435_456 * 4;
+		limits.max_storage_buffer_binding_size = 134_217_728 * 8;
+		limits.max_uniform_buffer_binding_size = 134_217_728 * 8;
 
 		let (device, queue) = adapter
 			.request_device(
