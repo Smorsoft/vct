@@ -104,27 +104,31 @@ var s_normal: sampler;
 
 @compute @workgroup_size(1)
 fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>) {
-    var indices_index = workgroup_id.x * 3u;
+    var indices_index = (workgroup_id.x * 3u);
 
     var voxel_grid_dimension = f32(textureDimensions(voxels_color).x);
     var voxel_size = WIDTH / voxel_grid_dimension;
 
     var triangle = get_triangle(indices_index, voxel_size);
 
-    voxelize(triangle);
+    voxelize_line(triangle, triangle.vertices[0].grid_position, triangle.vertices[1].grid_position);
+    voxelize_line(triangle, triangle.vertices[1].grid_position, triangle.vertices[2].grid_position);
+    voxelize_line(triangle, triangle.vertices[0].grid_position, triangle.vertices[2].grid_position);
+
+    voxelize_interior(triangle);
 }
 
 fn get_triangle(indices_index: u32, voxel_size: f32) -> Triangle {
     var triangle: Triangle;
 
-    let index: u32 = v_indices[indices_index];
 
     for (var i: u32 = 0u; i < 3u; i++) {
         var vertex: Vertex;
-        vertex.position = (model_transform.matrix * vec4<f32>(read_vertex(index + i), 1.0)).xyz;
+        let index: u32 = v_indices[indices_index + i];
+        vertex.position = (model_transform.matrix * vec4<f32>(read_vertex(index), 1.0)).xyz;
         vertex.grid_position = (vertex.position + (WIDTH / 2.0)) / voxel_size;
-        vertex.normal = read_normal(index + i);
-        vertex.color = read_color(index + i);
+        vertex.normal = read_normal(index);
+        vertex.color = read_color(index);
         triangle.vertices[i] = vertex;
     }
 
@@ -199,13 +203,44 @@ struct ScanlineCache {
 	sl_inv_dot_dir_23: f32,
 };
 
-fn voxelize_point(v: vec3<i32>) {
-    var color = vec4(textureGather(0, t_diffuse, s_diffuse, vec2(1.0)).rgb, 1.0);
+fn voxelize_point(triangle: Triangle, in_v: vec3<i32>, f_v: vec3<f32>) {
+    let v0 = triangle.vertices[1].grid_position - triangle.vertices[0].grid_position;
+    let v1 = triangle.vertices[2].grid_position - triangle.vertices[0].grid_position;
+    let v2 = f_v - triangle.vertices[0].grid_position;
+    
+    let d00 = dot(v0, v0);
+    let d01 = dot(v0, v1);
+    let d11 = dot(v1, v1);
+    let d20 = dot(v2, v0);
+    let d21 = dot(v2, v1);
+    let denom = d00 * d11 - d01 * d01;
+    let v = (d11 * d20 - d01 * d21) / denom;
+    let w = (d00 * d21 - d01 * d20) / denom;
+    let u = 1.0 - v - w;
 
-    textureStore(voxels_color, v, color);
+    let uv0 = (triangle.vertices[0].color.uv0 * u) + (triangle.vertices[1].color.uv0 * v) + (triangle.vertices[2].color.uv0 * w);
+
+    let color_r = textureGather(0, t_diffuse, s_diffuse, uv0);
+    let color_g = textureGather(1, t_diffuse, s_diffuse, uv0);
+    let color_b = textureGather(2, t_diffuse, s_diffuse, uv0);
+    let color_a = textureGather(3, t_diffuse, s_diffuse, uv0);
+
+    let color = vec4(
+        (color_r.x + color_r.y + color_r.z + color_r.w) / 4.0,
+        (color_g.x + color_g.y + color_g.z + color_g.w) / 4.0,
+        (color_b.x + color_b.y + color_b.z + color_b.w) / 4.0,
+        (color_a.x + color_a.y + color_a.z + color_a.w) / 4.0,
+    );
+    
+    let texture_dim = textureDimensions(t_diffuse);
+    
+    // let color = textureLoad(t_diffuse, vec2(12), 0);
+    // let color = vec4(u, v, w, 1.0);
+
+    textureStore(voxels_color, in_v, color);
 }
 
-fn voxelize_line(v1: vec3<f32>, v2: vec3<f32>) {
+fn voxelize_line(triangle: Triangle, v1: vec3<f32>, v2: vec3<f32>) {
     let dir = v2 - v1;
     let dir_length = length(dir);
     let unit_dir = normalize(dir);
@@ -216,7 +251,7 @@ fn voxelize_line(v1: vec3<f32>, v2: vec3<f32>) {
     var pos = vec3(i32(floored_start.x), i32(floored_start.y), i32(floored_start.z));
     let end_pos = vec3(i32(floored_end.x), i32(floored_end.y), i32(floored_end.z));
 
-    voxelize_point(pos);
+    voxelize_point(triangle, pos, v1);
 
     var plane_x: f32;
     if dir.x < 0.0 {
@@ -263,7 +298,7 @@ fn voxelize_line(v1: vec3<f32>, v2: vec3<f32>) {
         step_length += t_min;
 
         pos[axis] = pos[axis] + i32(sign_dir[axis]);
-        voxelize_point(pos);
+        voxelize_point(triangle, pos, v1 + (unit_dir * step_length));
         t[axis] = t_step[axis];
         i++;
     }
@@ -323,7 +358,7 @@ fn calculate_scanline(in_cache: ScanlineCache, triangle: Triangle) -> ScanlineCa
     return cache;
 }
 
-fn voxelize_scan_line(cache: ScanlineCache, sl_length: f32, axis: i32, height: f32) {
+fn voxelize_scan_line(cache: ScanlineCache, triangle: Triangle, sl_length: f32, height: f32) {
     var from_pos = cache.v1;
     var from_dir = cache.unit_dir_12;
     var inv_dot = cache.sl_inv_dot_dir_12;
@@ -342,10 +377,10 @@ fn voxelize_scan_line(cache: ScanlineCache, sl_length: f32, axis: i32, height: f
     var from_vec = from_pos + from_dir * sl_length * inv_dot;
     var to = cache.v1 + cache.unit_dir_13 * sl_length * cache.sl_inv_dot_dir_13;
 
-    from_vec[axis] = height;
-    to[axis] = height;
+    from_vec[triangle.dom_axis] = height;
+    to[triangle.dom_axis] = height;
 
-    voxelize_line(from_vec, to);
+    voxelize_line(triangle, from_vec, to);
 }
 
 fn voxelize_interior(triangle: Triangle) {
@@ -364,36 +399,20 @@ fn voxelize_interior(triangle: Triangle) {
     //     return;
     // }
 
-    var i = 0;
-
     while true {
         t = min(t, min(plane_t, cache.scanline_max_length));
         if t >= cache.scanline_max_length { // Fully voxelized
 			break;
 		}
         if t == plane_t { // New scanline slice
-            voxelize_scan_line(cache, t, triangle.dom_axis, plane);
+            voxelize_scan_line(cache, triangle, t, plane);
             plane += 1.0;
             plane_t += cache.scanline_inv_dir_axis;
 		}
 
-        voxelize_scan_line(cache, t, triangle.dom_axis, plane);
+        voxelize_scan_line(cache, triangle, t, plane);
         t += cache.scanline_length;
-
-        i++;
-
-        if i > 1500 {
-            return;
-        }
     }
-}
-
-fn voxelize(triangle: Triangle) {
-    voxelize_line(triangle.vertices[0].grid_position, triangle.vertices[1].grid_position);
-    voxelize_line(triangle.vertices[1].grid_position, triangle.vertices[2].grid_position);
-    voxelize_line(triangle.vertices[0].grid_position, triangle.vertices[2].grid_position);
-
-    voxelize_interior(triangle);
 }
 
 fn compare_vec(v1: vec3<i32>, v2: vec3<i32>) -> bool {

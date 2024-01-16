@@ -8,13 +8,13 @@ var<storage, read_write> voxel_sum: atomic<i32>;
 fn get_voxel_sum(
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
 ) {
-    if (unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, workgroup_id, 0).r)).w > 0.0) {
-        if (unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x - 1u, workgroup_id.y, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x + 1u, workgroup_id.y, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y - 1u, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y + 1u, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z - 1u), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z + 1u), 0).r)).w > 0.0
+    if (textureLoad(voxels_color, workgroup_id, 0).a > 0.0) {
+        if (textureLoad(voxels_color, vec3(workgroup_id.x - 1u, workgroup_id.y, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x + 1u, workgroup_id.y, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y - 1u, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y + 1u, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z - 1u), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z + 1u), 0).a > 0.0
         ) {
             return;
         }

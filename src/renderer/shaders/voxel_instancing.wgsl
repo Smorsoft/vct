@@ -18,17 +18,17 @@ var<storage, read_write> voxel_sum: atomic<i32>;
 
 @compute @workgroup_size(1)
 fn main(@builtin(workgroup_id) workgroup_id : vec3<u32>,) {
-	if (unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, workgroup_id, 0).r)).w > 0.0) {
-        if (unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x - 1u, workgroup_id.y, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x + 1u, workgroup_id.y, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y - 1u, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y + 1u, workgroup_id.z), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z - 1u), 0).r)).w > 0.0 &&
-            unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z + 1u), 0).r)).w > 0.0
+	if (textureLoad(voxels_color, workgroup_id, 0).a > 0.0) {
+    
+        if (textureLoad(voxels_color, vec3(workgroup_id.x - 1u, workgroup_id.y, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x + 1u, workgroup_id.y, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y - 1u, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y + 1u, workgroup_id.z), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z - 1u), 0).a > 0.0 &&
+            textureLoad(voxels_color, vec3(workgroup_id.x, workgroup_id.y, workgroup_id.z + 1u), 0).a > 0.0
         ) {
             return;
         }
-
 
         var index: i32 = atomicAdd(&voxel_sum, 1);
 
@@ -57,7 +57,8 @@ fn main(@builtin(workgroup_id) workgroup_id : vec3<u32>,) {
         vertices[index][7].position = vec3(center_position.x - half_voxel_size, center_position.y - half_voxel_size, center_position.z - half_voxel_size);
 
         {
-            var color: vec3<f32> = unpack4x8unorm(bitcast<u32>(textureLoad(voxels_color, workgroup_id, 0).r)).rgb;
+            var color: vec3<f32> = textureLoad(voxels_color, workgroup_id, 0).rgb;
+
 
             vertices[index][0].color = color;
             vertices[index][1].color = color;
