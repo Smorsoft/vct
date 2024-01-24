@@ -5,14 +5,6 @@ macro_rules! new_host_shareable {
 
 		impl crate::Buffer for $buffer_name {
 			type Source = $type;
-
-			unsafe fn from_buffer(buffer: ::wgpu::Buffer) -> Self {
-				::core::mem::transmute(buffer)
-			}
-
-			unsafe fn as_buffer(&self) -> &::wgpu::Buffer {
-				::core::mem::transmute(self)
-			}
 		}
 
 		impl crate::ToWGSL for $type {

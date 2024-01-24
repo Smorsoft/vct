@@ -1,11 +1,13 @@
-use std::ops::Range;
+use core::ops::Range;
+
+pub type Index = u32;
 
 pub struct Mesh {
+	pub index_buffer: wgpu::Buffer,
 	pub vertex_buffer: wgpu::Buffer,
 	pub positions: Range<wgpu::BufferAddress>,
 	pub normals: Range<wgpu::BufferAddress>,
 	pub colors: Range<wgpu::BufferAddress>,
-	pub index_buffer: wgpu::Buffer,
 	pub transform_buffer: wgpu::Buffer,
 	pub model_bind_group: wgpu::BindGroup,
 	pub primitives: Vec<Primitive>,
@@ -13,72 +15,9 @@ pub struct Mesh {
 
 pub struct Primitive {
 	pub index: Range<u32>,
-	// pub skin: Range<wgpu::BufferAddress>,
 	pub material: uuid::Uuid,
 }
 
-pub struct Material {
-	pub diffuse: Texture,
-	pub metallic_roughness: Texture,
-	pub normal: Texture,
-	pub bind_group: wgpu::BindGroup,
-}
-
-pub struct Texture {
-	pub texture: wgpu::Texture,
-	pub view: wgpu::TextureView,
-	pub sampler: wgpu::Sampler,
-}
-
-impl Texture {
-	pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-
-	pub fn create_depth_texture(
-		device: &wgpu::Device,
-		config: &wgpu::SurfaceConfiguration,
-	) -> Self {
-		let size = wgpu::Extent3d {
-			width: config.width,
-			height: config.height,
-			depth_or_array_layers: 1,
-		};
-
-		let desc = wgpu::TextureDescriptor {
-			label: Some("Depth Buffer"),
-			size,
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: Self::DEPTH_FORMAT,
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-			view_formats: &[],
-		};
-
-		let texture = device.create_texture(&desc);
-
-		let view = texture.create_view(&Default::default());
-		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-			address_mode_u: wgpu::AddressMode::ClampToEdge,
-			address_mode_v: wgpu::AddressMode::ClampToEdge,
-			address_mode_w: wgpu::AddressMode::ClampToEdge,
-			mag_filter: wgpu::FilterMode::Linear,
-			min_filter: wgpu::FilterMode::Linear,
-			mipmap_filter: wgpu::FilterMode::Nearest,
-			compare: Some(wgpu::CompareFunction::LessEqual),
-			lod_min_clamp: 0.0,
-			lod_max_clamp: 100.0,
-			..Default::default()
-		});
-
-		Self {
-			texture,
-			view,
-			sampler,
-		}
-	}
-}
-
-pub type Index = u32;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -149,4 +88,25 @@ impl VertexColors {
 pub struct VertexSkinning {
 	pub joint_index: [u16; 4],
 	pub joint_weight: [u16; 4],
+}
+
+pub trait LoadMesh<'a> {
+	type VertexPositionIterator: Iterator<Item=&'a VertexPosition>;
+	type VertexNormalsIterator: Iterator<Item=&'a VertexNormals>;
+	type VertexColorIterator: Iterator<Item=&'a VertexColors>;
+	type VertexSkinningIterator: Iterator<Item=&'a VertexSkinning>;
+	type PrimitiveRangeIterator: Iterator<Item=Primitive>;
+
+	fn get_mesh(&self) -> Mesh {
+		todo!()
+	}
+
+	fn get_num_vertices(&self) -> usize;
+	fn get_num_indices(&self) -> usize;
+	fn get_vertex_position_iterator(&'a self) -> Self::VertexPositionIterator;
+	fn get_vertex_normal_iterator(&'a self) -> Self::VertexNormalsIterator;
+	fn get_vertex_color_iterator(&'a self) -> Self::VertexColorIterator;
+	fn get_vertex_skinning_iterator(&'a self) -> Self::VertexSkinningIterator;
+
+	fn get_primitives(&'a self) -> Self::PrimitiveRangeIterator;
 }

@@ -1,7 +1,9 @@
 extern crate nalgebra_glm as glm;
 
 pub mod camera;
-use camera::*;
+// pub mod model;
+// pub mod texture;
+// pub mod transform;
 
 pub mod renderer;
 use renderer::*;

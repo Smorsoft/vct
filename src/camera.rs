@@ -1,5 +1,3 @@
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: glm::Mat4x4 = glm::Mat4x4::new(
     1.0, 0.0, 0.0, 0.0,

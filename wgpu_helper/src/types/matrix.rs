@@ -58,8 +58,6 @@ new_host_shareable!(mat4x2<f32>, "mat4x2<f32>", mat4x2fBuffer);
 new_host_shareable!(mat4x3<f32>, "mat4x3<f32>", mat4x3fBuffer);
 new_host_shareable!(mat4x4<f32>, "mat4x4<f32>", mat4x4fBuffer);
 
-
-
 impl ::core::ops::Deref for mat2x2<f32> {
 	type Target = [[f32; 2]; 2];
 

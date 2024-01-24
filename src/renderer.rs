@@ -8,6 +8,9 @@ pub mod load_gltf;
 pub mod mesh;
 mod render_pass;
 mod voxelization;
+mod scene;
+
+// use crate::model;
 
 pub struct Renderer {
 	pub context: Pin<Box<context::GraphicsContext>>,

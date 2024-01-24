@@ -1,6 +1,4 @@
-use gltf::json::extensions::material;
 use std::{collections::HashMap, pin::Pin};
-use wgpu::util::DeviceExt;
 
 use super::context::GraphicsContext;
 
