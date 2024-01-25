@@ -1,5 +1,7 @@
-pub mod types;
+use core::marker::PhantomData;
+
 pub mod bind_group;
+pub mod types;
 
 pub enum WGSL {
 	Struct {
@@ -20,7 +22,6 @@ pub trait ToWGSL {
 
 pub trait HostShareable: Sized {
 	const REQUIRED_BUFFER_USAGE_FLAGS: ::wgpu::BufferUsages;
-	type Buffer: Buffer;
 
 	unsafe fn as_bytes(&self) -> &[u8] {
 		::core::slice::from_raw_parts(
@@ -28,26 +29,29 @@ pub trait HostShareable: Sized {
 			::core::mem::size_of::<Self>(),
 		)
 	}
-
-	fn create_buffer(device: &wgpu::Device, usage: wgpu::BufferUsages, mapped_at_creation: bool) -> Self::Buffer {
-		create_buffer::<Self>(device, usage, mapped_at_creation)
-	}
-
-	fn create_buffer_init(&self, device: &wgpu::Device, usage: wgpu::BufferUsages) -> Self::Buffer {
-		create_buffer_init::<Self>(device, self, usage)
-	}
 }
 
-pub trait Buffer: Sized {
+pub trait BufferTrait: Sized {
 	type Source: HostShareable;
 
-	unsafe fn from_buffer(buffer: ::wgpu::Buffer) -> Self {
-		assert_eq!(core::mem::size_of::<Self>(), core::mem::size_of::<::wgpu::Buffer>());
-		std::mem::transmute_copy::<std::mem::ManuallyDrop<::wgpu::Buffer>, Self>(&std::mem::ManuallyDrop::new(buffer))
-	}
-	unsafe fn as_buffer(&self) -> &::wgpu::Buffer {
-		assert_eq!(core::mem::size_of::<Self>(), core::mem::size_of::<::wgpu::Buffer>());
-		::core::mem::transmute(self)
+	fn get_slice(&self) -> wgpu::BufferSlice;
+
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a>;
+
+	fn get_buffer(&self) -> &wgpu::Buffer;
+
+	fn get_size(&self) -> u64;
+
+	fn get_offset(&self, offset: u64) -> u64;
+
+	fn copy_to_buffer<T: BufferTrait>(&self, encoder: &mut wgpu::CommandEncoder, destination: &T) {
+		encoder.copy_buffer_to_buffer(
+			self.get_buffer(),
+			self.get_offset(0),
+			destination.get_buffer(),
+			destination.get_offset(0),
+			self.get_size(),
+		);
 	}
 
 	fn map_async(
@@ -55,9 +59,7 @@ pub trait Buffer: Sized {
 		mode: wgpu::MapMode,
 		callback: impl FnOnce(Result<(), wgpu::BufferAsyncError>) + wgpu::WasmNotSend + 'static,
 	) {
-
-		let buffer = unsafe { self.as_buffer() };
-		buffer.slice(..).map_async(mode, callback);
+		self.get_slice().map_async(mode, callback);
 	}
 
 	fn map_sync<'a>(&'a self, device: &wgpu::Device) -> &'a Self::Source {
@@ -72,7 +74,7 @@ pub trait Buffer: Sized {
 
 			match rx.recv() {
 				Ok(_) => {
-					return self.get_mapped_data();					
+					return self.get_mapped_data();
 				}
 				Err(e) => {
 					panic!("{:#?}", e);
@@ -93,7 +95,7 @@ pub trait Buffer: Sized {
 
 			match rx.recv() {
 				Ok(_) => {
-					return self.get_mapped_data_mut();					
+					return self.get_mapped_data_mut();
 				}
 				Err(e) => {
 					panic!("{:#?}", e);
@@ -103,44 +105,82 @@ pub trait Buffer: Sized {
 	}
 
 	fn get_mapped_data<'a>(&'a self) -> &'a Self::Source {
-		let buffer_view = unsafe { self.as_buffer() }.slice(..).get_mapped_range();
+		let buffer_view = self.get_slice().get_mapped_range();
 		unsafe { &*(buffer_view.as_ptr() as *const Self::Source) }
 	}
 
 	fn get_mapped_data_mut<'a>(&'a mut self) -> &'a mut Self::Source {
-		let buffer_view = unsafe { self.as_buffer() }.slice(..).get_mapped_range_mut();
+		let buffer_view = self.get_slice().get_mapped_range_mut();
 		unsafe { &mut *(buffer_view.as_ptr() as *mut Self::Source) }
 	}
 }
 
-pub fn create_buffer<T: HostShareable + Sized>(
-	device: &wgpu::Device,
-	usage: ::wgpu::BufferUsages,
-	mapped_at_creation: bool,
-) -> T::Buffer {
-	unsafe {
-		T::Buffer::from_buffer(device.create_buffer(&wgpu::BufferDescriptor {
+pub struct Buffer<T: HostShareable> {
+	buffer: wgpu::Buffer,
+	phantom_data: PhantomData<T>,
+}
+
+impl<T: HostShareable> Buffer<T> {
+	pub fn new(device: &wgpu::Device, usage: wgpu::BufferUsages, mapped_at_creation: bool) -> Self {
+		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: None,
-			size: std::mem::size_of::<T>() as u64,
+			size: core::mem::size_of::<T>() as u64,
 			usage,
 			mapped_at_creation,
-		}))
+		});
+
+		Self {
+			buffer,
+			phantom_data: PhantomData::default(),
+		}
+	}
+
+	pub fn new_init(device: &wgpu::Device, data: &T, usage: wgpu::BufferUsages) -> Self {
+		use wgpu::util::DeviceExt;
+		let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: None,
+			contents: unsafe { data.as_bytes() },
+			usage,
+		});
+
+		Self {
+			buffer,
+			phantom_data: PhantomData::default(),
+		}
 	}
 }
 
-pub fn create_buffer_init<T: HostShareable + Sized>(
-	device: &wgpu::Device,
-	item: &T,
-	usage: ::wgpu::BufferUsages,
-) -> T::Buffer {
-	use wgpu::util::DeviceExt;
-	unsafe {
-		T::Buffer::from_buffer(
-			device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-				label: None,
-				contents: item.as_bytes(),
-				usage,
-			}),
-		)
+impl<T: HostShareable> BufferTrait for Buffer<T> {
+	type Source = T;
+	fn get_slice(&self) -> wgpu::BufferSlice {
+		self.buffer.slice(..)
 	}
+
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
+		self.buffer.as_entire_binding()
+	}
+
+	fn get_buffer(&self) -> &wgpu::Buffer {
+		&self.buffer
+	}
+
+	fn get_size(&self) -> u64 {
+		self.buffer.size()
+	}
+
+	fn get_offset(&self, offset: u64) -> u64 {
+		offset
+	}
+}
+
+pub struct RcBuffer<T: HostShareable> {
+	buffer: std::rc::Rc<wgpu::Buffer>,
+	range: core::ops::Range<u64>,
+	phantom_data: PhantomData<T>,
+}
+
+pub struct ArcBuffer<T: HostShareable> {
+	buffer: std::sync::Arc<wgpu::Buffer>,
+	range: core::ops::Range<u64>,
+	phantom_data: PhantomData<T>,
 }

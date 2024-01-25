@@ -44,7 +44,7 @@ impl<'a> BindGroupType for TestBindGroupType<'a> {
 				layout: Self::get_bind_group_layout(device),
 				entries: &[wgpu::BindGroupEntry {
 					binding: 0,
-					resource: unsafe { self.indices.as_buffer() }.as_entire_binding(),
+					resource: self.indices.as_buffer().as_entire_binding(),
 				}],
 			}))
 		}

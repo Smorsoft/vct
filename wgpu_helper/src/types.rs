@@ -1,12 +1,5 @@
 macro_rules! new_host_shareable {
 	($type:ty, $wgsl_name:literal, $buffer_name:ident, $flags:expr) => {
-		#[repr(transparent)]
-		pub struct $buffer_name(::wgpu::Buffer);
-
-		impl crate::Buffer for $buffer_name {
-			type Source = $type;
-		}
-
 		impl crate::ToWGSL for $type {
 			fn to_wgsl() -> crate::WGSL {
 				crate::WGSL::Ty($wgsl_name.into())
@@ -15,7 +8,6 @@ macro_rules! new_host_shareable {
 
 		impl crate::HostShareable for $type {
 			const REQUIRED_BUFFER_USAGE_FLAGS: ::wgpu::BufferUsages = $flags;
-			type Buffer = $buffer_name;
 		}
 	};
 	($type:ty, $wgsl_name:literal, $buffer_name:ident) => {

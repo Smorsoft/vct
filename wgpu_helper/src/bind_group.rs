@@ -1,5 +1,7 @@
 use std::sync::OnceLock;
 
+pub use derive::BindGroup;
+
 pub trait BindGroupType: Sized {
 	const BIND_GROUP_LAYOUT_DESCRIPTOR: &'static ::wgpu::BindGroupLayoutDescriptor<'static>;
 	type BindGroup: BindGroup;
