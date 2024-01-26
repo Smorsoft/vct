@@ -1,9 +1,36 @@
 use ::wgpu_helper::*;
 use wgpu_helper::bind_group::*;
 
+const TEST_BIND_GROUP_LAYOUT: &'static wgpu::BindGroupLayoutDescriptor<'static> =
+	&wgpu::BindGroupLayoutDescriptor {
+		label: Some("CRinge"),
+		entries: &[wgpu::BindGroupLayoutEntry {
+			binding: 0,
+			visibility: wgpu::ShaderStages::COMPUTE,
+			ty: wgpu::BindingType::Buffer {
+				ty: wgpu::BufferBindingType::Storage { read_only: false },
+				has_dynamic_offset: false,
+				min_binding_size: None,
+			},
+			count: None,
+		}],
+	};
+
 #[derive(BindGroup)]
-pub struct TestBindGroupType<'a> {
-	pub indices: &'a crate::types::mat4x4fBuffer,
+#[layout(TEST_BIND_GROUP_LAYOUT)]
+pub struct TestBindGroup<'a> {
+	// #[layout(
+	// 	visibility = compute,
+	// 	source_type = crate::types::mat4x4f,
+	// 	ty(buffer(
+	// 		ty(storage(
+	// 			ready_only = false),
+	// 		),
+	// 		has_dynamic_offset = false,
+	// 	)),
+	// 	count = None,
+	// )]
+	pub indices: &'a crate::Buffer<crate::types::mat4x4f>,
 }
 
 #[test]
@@ -31,27 +58,26 @@ fn new_buffer() {
 		))),
 	});
 
-	let size = std::mem::size_of::<crate::types::mat4x4f>() as wgpu::BufferAddress;
-	let staging_buffer = crate::create_buffer::<crate::types::mat4x4f>(
+	let staging_buffer = wgpu_helper::Buffer::<crate::types::mat4x4f>::new(
 		&device,
 		wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
 		false,
 	);
 
 	let orig_data: crate::types::mat4x4f = [[1.5_f32; 4]; 4].into();
-
-	let storage_buffer = orig_data.create_buffer_init(
+	let storage_buffer = wgpu_helper::Buffer::new_init(
 		&device,
+		&orig_data,
 		wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
 	);
 
-	let bind_group = TestBindGroupType {
+	let bind_group = TestBindGroup {
 		indices: &storage_buffer,
 	};
 
 	let official_bind_group = bind_group.to_bind_group(&device, None);
 
-	let bind_group_layout = TestBindGroupType::get_bind_group_layout(&device);
+	let bind_group_layout = TestBindGroup::get_bind_group_layout(&device);
 
 	let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 		label: Some("Test Pipeline"),
@@ -79,13 +105,7 @@ fn new_buffer() {
 		cpass.dispatch_workgroups(1, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
 	}
 
-	encoder.copy_buffer_to_buffer(
-		unsafe { storage_buffer.as_buffer() },
-		0,
-		unsafe { staging_buffer.as_buffer() },
-		0,
-		size,
-	);
+	storage_buffer.copy_to_buffer(&mut encoder, &staging_buffer);
 
 	queue.submit(Some(encoder.finish()));
 

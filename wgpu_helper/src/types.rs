@@ -6,9 +6,7 @@ macro_rules! new_host_shareable {
 			}
 		}
 
-		impl crate::HostShareable for $type {
-			const REQUIRED_BUFFER_USAGE_FLAGS: ::wgpu::BufferUsages = $flags;
-		}
+		impl crate::HostShareable for $type {}
 	};
 	($type:ty, $wgsl_name:literal, $buffer_name:ident) => {
 		new_host_shareable!(

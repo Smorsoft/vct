@@ -26,7 +26,6 @@ fn new_buffer() {
 		))),
 	});
 
-	let size = std::mem::size_of::<crate::types::mat4x4f>() as wgpu::BufferAddress;
 	let staging_buffer = wgpu_helper::Buffer::<crate::types::mat4x4f>::new(
 		&device,
 		wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
@@ -73,6 +72,6 @@ fn new_buffer() {
 	storage_buffer.copy_to_buffer(&mut encoder, &staging_buffer);
 
 	queue.submit(Some(encoder.finish()));
-	
+
 	assert_eq!(staging_buffer.map_sync(&device), &[[3.0_f32; 4]; 4].into());
 }

@@ -21,8 +21,6 @@ pub trait ToWGSL {
 }
 
 pub trait HostShareable: Sized {
-	const REQUIRED_BUFFER_USAGE_FLAGS: ::wgpu::BufferUsages;
-
 	unsafe fn as_bytes(&self) -> &[u8] {
 		::core::slice::from_raw_parts(
 			(self as *const Self) as *const u8,
@@ -173,14 +171,73 @@ impl<T: HostShareable> BufferTrait for Buffer<T> {
 	}
 }
 
-pub struct RcBuffer<T: HostShareable> {
-	buffer: std::rc::Rc<wgpu::Buffer>,
-	range: core::ops::Range<u64>,
-	phantom_data: PhantomData<T>,
-}
-
 pub struct ArcBuffer<T: HostShareable> {
 	buffer: std::sync::Arc<wgpu::Buffer>,
 	range: core::ops::Range<u64>,
 	phantom_data: PhantomData<T>,
+}
+
+impl<T: HostShareable> ArcBuffer<T> {
+	pub fn new(device: &wgpu::Device, usage: wgpu::BufferUsages, mapped_at_creation: bool) -> Self {
+		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+			label: None,
+			size: core::mem::size_of::<T>() as u64,
+			usage,
+			mapped_at_creation,
+		});
+
+		let range = 0..buffer.size();
+
+		Self {
+			buffer: buffer.into(),
+			range,
+			phantom_data: PhantomData::default(),
+		}
+	}
+
+	pub fn new_init(device: &wgpu::Device, data: &T, usage: wgpu::BufferUsages) -> Self {
+		use wgpu::util::DeviceExt;
+		let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: None,
+			contents: unsafe { data.as_bytes() },
+			usage,
+		});
+
+		let range = 0..buffer.size();
+
+		Self {
+			buffer: buffer.into(),
+			range,
+			phantom_data: PhantomData::default(),
+		}
+	}
+}
+
+impl<T: HostShareable> BufferTrait for ArcBuffer<T> {
+	type Source = T;
+	fn get_slice(&self) -> wgpu::BufferSlice {
+		self.buffer.slice(self.range.to_owned())
+	}
+
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
+		wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+			buffer: self.get_buffer(),
+			offset: self.range.start,
+			size: core::num::NonZeroU64::new(
+				self.range.end - self.range.start
+			),
+		})
+	}
+
+	fn get_buffer(&self) -> &wgpu::Buffer {
+		&self.buffer
+	}
+
+	fn get_size(&self) -> u64 {
+		self.range.end - self.range.start
+	}
+
+	fn get_offset(&self, offset: u64) -> u64 {
+		offset + self.range.start
+	}
 }
