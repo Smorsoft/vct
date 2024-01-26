@@ -3,39 +3,39 @@
 use super::new_host_shareable;
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat2x2<T>([[T; 2]; 2]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat2x3<T>([[T; 2]; 3]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat2x4<T>([[T; 2]; 4]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat3x2<T>([[T; 3]; 2]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat3x3<T>([[T; 3]; 3]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat3x4<T>([[T; 3]; 4]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat4x2<T>([[T; 4]; 2]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat4x3<T>([[T; 4]; 3]);
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct mat4x4<T>([[T; 4]; 4]);
 
 pub type mat2x2f = mat2x2<f32>;

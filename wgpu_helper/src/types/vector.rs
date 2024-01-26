@@ -3,12 +3,15 @@
 use super::new_host_shareable;
 
 #[repr(transparent)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct vec2<T>([T; 2]);
 
 #[repr(transparent)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct vec3<T>([T; 3]);
 
 #[repr(transparent)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct vec4<T>([T; 4]);
 
 pub type vec2i = vec2<i32>;

@@ -25,3 +25,6 @@ pub use vector::*;
 
 mod matrix;
 pub use matrix::*;
+
+mod scalar;
+pub use scalar::*;
