@@ -6,14 +6,6 @@ pub use meshify::*;
 
 use super::CommandEncoder;
 
-pub struct DepthBufferResource {
-	pub depth_buffer: crate::mesh::Texture,
-}
-
-impl crate::Resource for DepthBufferResource {
-	fn updated_settings(&mut self, _renderer: &Renderer) {}
-}
-
 pub struct VoxelsResource {
 	pub color: crate::mesh::Texture,
 }

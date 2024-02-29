@@ -10,7 +10,7 @@ use winit::{
 };
 
 const CAMERA_MOVE_SPEED: f32 = 10.0;
-const CAMERA_ROTATION_SPEED: f32 = 10.0;
+const CAMERA_ROTATION_SPEED: f32 = 30.0;
 
 fn main() {
 	let event_loop = EventLoop::new();
@@ -33,6 +33,7 @@ fn main() {
 	let mut voxelization_pass = vct::command_encoder::voxelization::VoxelizationPass::new(&renderer);
 	let mut meshify_pass = vct::command_encoder::voxelization::MeshifyPass::new(&renderer);
 	let mut render_meshify_pass = vct::command_encoder::voxelization::RenderMeshifyPass::new(&renderer);
+	let mut forward_render_pass = vct::command_encoder::forward::ForwardRenderingPass::new(&renderer);
 
 	let camera = renderer.new_camera(&CameraDescriptor {
 		position: [0.0, 0.0, 0.0].into(),
@@ -60,6 +61,7 @@ fn main() {
 	let mut d = ElementState::Released;
 	let mut c = ElementState::Released;
 	let mut space = ElementState::Released;
+	let mut render_voxels = false;
 
 	event_loop.run(move |event, _, control_flow| {
 		let new_instant = std::time::Instant::now();
@@ -220,7 +222,7 @@ fn main() {
 					..
 				} => match *state {
 					winit::event::ElementState::Pressed => {
-						// app.renderer.render_voxels = !app.renderer.render_voxels;
+						render_voxels = !render_voxels;
 					},
 					_ => {}
 				}
@@ -245,10 +247,13 @@ fn main() {
 				_ => {}
 			},
 			Event::MainEventsCleared => {
-				// TODO: update function and new command_encoder function
 				renderer.update();
 				let mut command_encoder = renderer.new_command_encoder(Some(&camera));
-				command_encoder.begin_pass(&mut render_meshify_pass);
+				if render_voxels {
+					command_encoder.begin_pass(&mut render_meshify_pass);
+				} else {
+					command_encoder.begin_pass(&mut forward_render_pass);
+				}
 				command_encoder.finish();
 			}
 			_ => {}

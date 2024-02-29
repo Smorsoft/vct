@@ -22,6 +22,7 @@ pub mod load_gltf;
 pub mod mesh;
 mod scene;
 pub mod transform;
+pub mod resources;
 // pub mod model;
 // pub mod texture;
 

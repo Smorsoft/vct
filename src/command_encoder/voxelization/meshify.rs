@@ -499,22 +499,21 @@ impl RenderPassTrait for RenderMeshifyPass {
 			return None;
 		}
 
-		
 		let view = command_encoder.get_surface_texture_view();
 		
 		let camera = command_encoder.get_camera().unwrap();
 		
-		let depth_buffer = if global_resources.get_resource::<super::DepthBufferResource>().is_none() {
+		let depth_buffer = if global_resources.get_resource::<crate::resources::DepthBufferResource>().is_none() {
 			let depth_buffer = camera.new_depth_buffer();
 			
-			let depth_buffer_resource = super::DepthBufferResource {
+			let depth_buffer_resource = crate::resources::DepthBufferResource {
 				depth_buffer,
 			};
 			
 			global_resources.insert_resource(depth_buffer_resource);
-			global_resources.get_resource::<super::DepthBufferResource>().unwrap()
+			global_resources.get_resource::<crate::resources::DepthBufferResource>().unwrap()
 		} else {
-			global_resources.get_resource::<super::DepthBufferResource>().unwrap()
+			global_resources.get_resource::<crate::resources::DepthBufferResource>().unwrap()
 		};
 
 		let mut encoder = command_encoder.device().create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -567,8 +566,6 @@ impl RenderPassTrait for RenderMeshifyPass {
 			);
 
 		}
-
-		
 		
 		Some(encoder.finish())
 	}
