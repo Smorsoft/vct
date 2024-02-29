@@ -29,12 +29,14 @@ pub trait HostShareable: Sized {
 	}
 }
 
-pub trait BufferTrait: Sized {
+pub trait BindGroupItem: Sized {
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a>;
+}
+
+pub trait BufferTrait: Sized + BindGroupItem {
 	type Source: HostShareable;
 
 	fn get_slice(&self) -> wgpu::BufferSlice;
-
-	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a>;
 
 	fn get_buffer(&self) -> &wgpu::Buffer;
 
@@ -111,6 +113,10 @@ pub trait BufferTrait: Sized {
 		let buffer_view = self.get_slice().get_mapped_range_mut();
 		unsafe { &mut *(buffer_view.as_ptr() as *mut Self::Source) }
 	}
+
+	fn write_to(&mut self, queue: &wgpu::Queue, new_data: &Self::Source) {
+		queue.write_buffer(self.get_buffer(), 0, unsafe { new_data.as_bytes() })
+	}
 }
 
 pub struct Buffer<T: HostShareable> {
@@ -148,15 +154,18 @@ impl<T: HostShareable> Buffer<T> {
 	}
 }
 
+impl<T: HostShareable> BindGroupItem for Buffer<T> {
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
+		self.buffer.as_entire_binding()
+	}
+}
+
 impl<T: HostShareable> BufferTrait for Buffer<T> {
 	type Source = T;
 	fn get_slice(&self) -> wgpu::BufferSlice {
 		self.buffer.slice(..)
 	}
 
-	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
-		self.buffer.as_entire_binding()
-	}
 
 	fn get_buffer(&self) -> &wgpu::Buffer {
 		&self.buffer
@@ -213,12 +222,7 @@ impl<T: HostShareable> ArcBuffer<T> {
 	}
 }
 
-impl<T: HostShareable> BufferTrait for ArcBuffer<T> {
-	type Source = T;
-	fn get_slice(&self) -> wgpu::BufferSlice {
-		self.buffer.slice(self.range.to_owned())
-	}
-
+impl<T: HostShareable> BindGroupItem for ArcBuffer<T> {
 	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
 		wgpu::BindingResource::Buffer(wgpu::BufferBinding {
 			buffer: self.get_buffer(),
@@ -227,6 +231,13 @@ impl<T: HostShareable> BufferTrait for ArcBuffer<T> {
 				self.range.end - self.range.start
 			),
 		})
+	}
+}
+
+impl<T: HostShareable> BufferTrait for ArcBuffer<T> {
+	type Source = T;
+	fn get_slice(&self) -> wgpu::BufferSlice {
+		self.buffer.slice(self.range.to_owned())
 	}
 
 	fn get_buffer(&self) -> &wgpu::Buffer {
@@ -239,5 +250,17 @@ impl<T: HostShareable> BufferTrait for ArcBuffer<T> {
 
 	fn get_offset(&self, offset: u64) -> u64 {
 		offset + self.range.start
+	}
+}
+
+impl BindGroupItem for wgpu::Sampler {
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
+		wgpu::BindingResource::Sampler(&self)
+	}
+}
+
+impl BindGroupItem for wgpu::TextureView {
+	fn get_binding<'a>(&'a self) -> wgpu::BindingResource<'a> {
+		wgpu::BindingResource::TextureView(&self)
 	}
 }

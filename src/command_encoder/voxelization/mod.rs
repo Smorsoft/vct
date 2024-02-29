@@ -1,28 +1,34 @@
-use std::{collections::HashMap, pin::Pin};
-
-use super::context::GraphicsContext;
+use crate::Renderer;
+use wgpu_helper::bind_group::BindGroupType;
 
 mod meshify;
-mod textures;
+pub use meshify::*;
 
-pub struct Voxelization {
-	voxel_color: super::mesh::Texture,
-	voxelizer_layout: wgpu::PipelineLayout,
-	voxelizer_pipeline: wgpu::ComputePipeline,
-	voxels_bind_group_layout: wgpu::BindGroupLayout,
-	mesh_bind_group_layout: wgpu::BindGroupLayout,
+use super::CommandEncoder;
 
-	meshify: meshify::Meshify,
+pub struct DepthBufferResource {
+	pub depth_buffer: crate::mesh::Texture,
 }
 
-impl Voxelization {
-	pub fn new(
-		context: &Pin<Box<GraphicsContext>>,
-		model_bind_group_layout: &wgpu::BindGroupLayout,
-		material_bind_group_layout: &wgpu::BindGroupLayout,
-	) -> Self {
-		let meshify = meshify::Meshify::new(context);
+impl crate::Resource for DepthBufferResource {
+	fn updated_settings(&mut self, _renderer: &Renderer) {}
+}
 
+pub struct VoxelsResource {
+	pub color: crate::mesh::Texture,
+}
+
+impl crate::Resource for VoxelsResource {
+	fn updated_settings(&mut self, _renderer: &Renderer) {}
+}
+
+pub struct VoxelizationPass {
+	voxelizer_pipeline: wgpu::ComputePipeline,
+	voxels_bind_group_layout: wgpu::BindGroupLayout,
+}
+
+impl VoxelizationPass {
+	pub fn new(renderer: &Renderer) -> Self {
 		let size = wgpu::Extent3d {
 			width: 512,
 			height: 512,
@@ -42,7 +48,7 @@ impl Voxelization {
 			..Default::default()
 		};
 
-		let voxel_color_texture = context.device.create_texture(&wgpu::TextureDescriptor {
+		let voxel_color_texture = renderer.device().create_texture(&wgpu::TextureDescriptor {
 			label: Some("Voxel Color Texture"),
 			size,
 			mip_level_count: 1,
@@ -59,26 +65,31 @@ impl Voxelization {
 			dimension: Some(wgpu::TextureViewDimension::D3),
 			..Default::default()
 		});
-		let voxel_color_sampler = context.device.create_sampler(&sampler_descriptor);
+		let voxel_color_sampler = renderer.device().create_sampler(&sampler_descriptor);
 
-		let voxel_color = super::mesh::Texture {
+		let voxel_color = crate::mesh::Texture {
 			texture: voxel_color_texture,
 			view: voxel_color_view,
 			sampler: voxel_color_sampler,
 		};
 
-		let voxelizer_shader = context
-			.device
-			.create_shader_module(wgpu::ShaderModuleDescriptor {
-				label: Some("Voxelizer shader"),
-				source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-					"../shaders/voxelization.wgsl"
-				))),
-			});
+		let voxels_resource = VoxelsResource { color: voxel_color };
+
+		renderer.insert_resource(voxels_resource);
+
+		let voxelizer_shader =
+			renderer
+				.device()
+				.create_shader_module(wgpu::ShaderModuleDescriptor {
+					label: Some("Voxelizer shader"),
+					source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
+						"../shaders/voxelization.wgsl"
+					))),
+				});
 
 		let voxels_bind_group_layout =
-			context
-				.device
+			renderer
+				.device()
 				.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 					label: Some("Voxels BindGroup Layout"),
 					entries: &[wgpu::BindGroupLayoutEntry {
@@ -93,101 +104,55 @@ impl Voxelization {
 					}],
 				});
 
-		let mesh_bind_group_layout =
-			context
-				.device
-				.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-					label: Some("Mesh Bind Group Layout"),
-					entries: &[
-						wgpu::BindGroupLayoutEntry {
-							binding: 0,
-							visibility: wgpu::ShaderStages::COMPUTE,
-							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Storage { read_only: true },
-								has_dynamic_offset: false,
-								min_binding_size: None,
-							},
-							count: None,
-						},
-						wgpu::BindGroupLayoutEntry {
-							binding: 1,
-							visibility: wgpu::ShaderStages::COMPUTE,
-							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Storage { read_only: true },
-								has_dynamic_offset: false,
-								min_binding_size: None,
-							},
-							count: None,
-						},
-						wgpu::BindGroupLayoutEntry {
-							binding: 2,
-							visibility: wgpu::ShaderStages::COMPUTE,
-							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Storage { read_only: true },
-								has_dynamic_offset: false,
-								min_binding_size: None,
-							},
-							count: None,
-						},
-						wgpu::BindGroupLayoutEntry {
-							binding: 3,
-							visibility: wgpu::ShaderStages::COMPUTE,
-							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Storage { read_only: true },
-								has_dynamic_offset: false,
-								min_binding_size: None,
-							},
-							count: None,
-						},
-					],
-				});
-
 		let voxelizer_layout =
-			context
-				.device
+			renderer
+				.device()
 				.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Voxelizer Layout"),
 					bind_group_layouts: &[
 						&voxels_bind_group_layout,
-						&mesh_bind_group_layout,
-						&model_bind_group_layout,
-						&material_bind_group_layout,
+						&crate::mesh::ComputeMeshBindGroup::get_bind_group_layout(
+							&renderer.device(),
+						),
+						&crate::ModelBindGroup::get_bind_group_layout(&renderer.device()),
+						&crate::MaterialBindGroup::get_bind_group_layout(&renderer.device()),
 					],
 					push_constant_ranges: &[],
 				});
 
 		let voxelizer_pipeline =
-			context
-				.device
+			renderer
+				.device()
 				.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 					label: Some("Voxelizer pipeline"),
 					layout: Some(&voxelizer_layout),
 					module: &voxelizer_shader,
 					entry_point: "main",
 				});
-
+				
 		Self {
-			voxel_color,
-			voxelizer_layout,
 			voxelizer_pipeline,
 			voxels_bind_group_layout,
-			mesh_bind_group_layout,
-			meshify,
 		}
 	}
+}
 
-	pub fn voxelize(
+impl super::RenderPassTrait for VoxelizationPass {
+	// type Dependencies = [DepthBufferResource];
+	
+	fn execute<'manager>(
 		&mut self,
-		context: &Pin<Box<GraphicsContext>>,
-		meshes: &Vec<super::mesh::Mesh>,
-		materials: &HashMap<uuid::Uuid, super::mesh::Material>,
-	) {
-		let create_mesh_bind_group = |mesh: &super::mesh::Mesh, offset: u64, size: u64| {
-			context
-				.device
-				.create_bind_group(&wgpu::BindGroupDescriptor {
+		command_encoder: &'manager CommandEncoder,
+		global_resources: &mut crate::ResourceManagerHandle<'manager>,
+	) -> Option<wgpu::CommandBuffer> {
+		let create_mesh_bind_group = |mesh: &crate::mesh::Mesh, offset: u64, size: u64| {
+			command_encoder
+			.device()
+			.create_bind_group(&wgpu::BindGroupDescriptor {
 					label: Some("Mesh Bind Group"),
-					layout: &self.mesh_bind_group_layout,
+					layout: &crate::mesh::ComputeMeshBindGroup::get_bind_group_layout(
+						&command_encoder.device(),
+					),
 					entries: &[
 						wgpu::BindGroupEntry {
 							binding: 0,
@@ -231,41 +196,50 @@ impl Voxelization {
 				})
 		};
 
-		let mut encoder = context
-			.device
-			.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-				label: Some("Voxelization Encoder"),
-			});
+		let voxels_resource = global_resources.get_resource::<VoxelsResource>().unwrap();
 
-		let voxels_bind_group = context
-			.device
-			.create_bind_group(&wgpu::BindGroupDescriptor {
-				label: Some("Voxels Bind Group"),
-				layout: &self.voxels_bind_group_layout,
-				entries: &[wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&self.voxel_color.view),
-				}],
-			});
+		let mut encoder =
+		command_encoder
+		.device()
+		.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+					label: Some("Voxelization Encoder"),
+				});
 
+				let voxels_bind_group =
+				command_encoder
+				.device()
+				.create_bind_group(&wgpu::BindGroupDescriptor {
+					label: Some("Voxels Bind Group"),
+					layout: &self.voxels_bind_group_layout,
+					entries: &[wgpu::BindGroupEntry {
+						binding: 0,
+						resource: wgpu::BindingResource::TextureView(&voxels_resource.color.view),
+					}],
+				});
+				
+		let meshes = command_encoder.get_meshes();
 		let mut runs = Vec::new();
-		for mesh in meshes.iter() {
+		for mesh in meshes.meshes.iter() {
 			let mut mesh_runs = Vec::new();
 
 			for primitive in mesh.primitives.iter() {
 				let indices_num = primitive.index.end - primitive.index.start;
 				let triangles_num = indices_num / 3;
-				let alignment = context.device.limits().min_storage_buffer_offset_alignment * 3;
+				let alignment = command_encoder
+					.device()
+					.limits()
+					.min_storage_buffer_offset_alignment
+					* 3;
 				let dispatch_group =
 					(65535 /*Max num workgroup dispatches*/ / alignment) * alignment;
 
 				let run = if triangles_num <= dispatch_group {
 					let bind_group = create_mesh_bind_group(
-						mesh,
+						&mesh,
 						primitive.index.start as u64
-							* std::mem::size_of::<super::mesh::Index>() as u64,
+							* std::mem::size_of::<crate::mesh::Index>() as u64,
 						(primitive.index.end - primitive.index.start) as u64
-							* std::mem::size_of::<super::mesh::Index>() as u64,
+							* std::mem::size_of::<crate::mesh::Index>() as u64,
 					);
 
 					vec![(bind_group, triangles_num)]
@@ -273,22 +247,20 @@ impl Voxelization {
 					let mut offsets = Vec::new();
 					let number_of_runs =
 						f64::ceil(triangles_num as f64 / dispatch_group as f64) as u32;
-						
+
 					for i in 0..number_of_runs {
 						let offset = primitive.index.start + (dispatch_group * 3 * i);
 
-						let size = if (triangles_num - (dispatch_group * i))
-							> dispatch_group
-						{
+						let size = if (triangles_num - (dispatch_group * i)) > dispatch_group {
 							dispatch_group
 						} else {
 							triangles_num - (dispatch_group * i)
 						};
 
 						let bind_group = create_mesh_bind_group(
-							mesh,
-							offset as u64 * std::mem::size_of::<super::mesh::Index>() as u64,
-							size as u64 * std::mem::size_of::<super::mesh::Index>() as u64,
+							&mesh,
+							offset as u64 * std::mem::size_of::<crate::mesh::Index>() as u64,
+							size as u64 * std::mem::size_of::<crate::mesh::Index>() as u64,
 						);
 						offsets.push((bind_group, size));
 					}
@@ -302,6 +274,8 @@ impl Voxelization {
 			runs.push(mesh_runs);
 		}
 
+		let materials = command_encoder.get_materials();
+
 		{
 			let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
 				label: Some("Voxelization pass"),
@@ -311,12 +285,14 @@ impl Voxelization {
 			compute_pass.set_pipeline(&self.voxelizer_pipeline);
 			compute_pass.set_bind_group(0, &voxels_bind_group, &[]);
 
-			
-
-			for (mesh, mesh_runs) in meshes.iter().zip(runs.iter()) {
+			for (mesh, mesh_runs) in meshes.meshes.iter().zip(runs.iter()) {
 				compute_pass.set_bind_group(2, &mesh.model_bind_group, &[]);
 				for (primitive, prim_runs) in mesh.primitives.iter().zip(mesh_runs.iter()) {
-					compute_pass.set_bind_group(3, &materials[&primitive.material].bind_group, &[]);
+					compute_pass.set_bind_group(
+						3,
+						&materials.materials.get(&primitive.material).unwrap().bind_group,
+						&[],
+					);
 
 					for (bind_group, size) in prim_runs.iter() {
 						compute_pass.set_bind_group(1, bind_group, &[]);
@@ -327,20 +303,6 @@ impl Voxelization {
 			}
 		}
 
-		context.queue.submit(Some(encoder.finish()));
-	}
-
-	pub fn meshify(&mut self, context: &Pin<Box<GraphicsContext>>) {
-		self.meshify.meshify(context, &self.voxel_color);
-	}
-
-	pub fn render(
-		&mut self,
-		context: &Pin<Box<GraphicsContext>>,
-		depth_buffer: &crate::renderer::mesh::Texture,
-		camera_bind_group: &wgpu::BindGroup,
-	) {
-		self.meshify
-			.render(context, depth_buffer, camera_bind_group);
+		Some(encoder.finish())
 	}
 }

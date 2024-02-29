@@ -1,6 +1,8 @@
 extern crate nalgebra_glm as glm;
 
-use vct::*;
+use std::collections::HashMap;
+
+use vct::{camera::CameraDescriptor, *};
 use winit::{
 	event::*,
 	event_loop::{ControlFlow, EventLoop},
@@ -19,20 +21,36 @@ fn main() {
 
 	window.set_maximized(true);
 
-	let mut app = pollster::block_on(App::new(&window));
-	let _cameras = app.load_gltf("examples/Sponza/Sponza.gltf", true);
+	let render_settings = RendererSettings {
+		resolution: [1920, 1080],
+		extras: HashMap::new(),
+	};
+
+	let mut renderer = pollster::block_on(Renderer::new(&window, render_settings));
+	let _cameras = renderer.load_gltf("examples/Sponza/Sponza.gltf", true);
 	// .load_gltf("examples/Box.glb", true);
 
-	let mut camera = camera::Camera {
+	let mut voxelization_pass = vct::command_encoder::voxelization::VoxelizationPass::new(&renderer);
+	let mut meshify_pass = vct::command_encoder::voxelization::MeshifyPass::new(&renderer);
+	let mut render_meshify_pass = vct::command_encoder::voxelization::RenderMeshifyPass::new(&renderer);
+
+	let camera = renderer.new_camera(&CameraDescriptor {
 		position: [0.0, 0.0, 0.0].into(),
 		rotation: glm::Quat::identity(),
-		aspect: ((window.inner_size().width as f32) / (window.inner_size().height as f32)),
+		resolution: camera::Resolution::UseGlobalResolution,
 		fovy: 90.0,
 		znear: 0.001,
 		zfar: 100000000.0,
-	};
+	});
 
-	app.renderer.update_camera(&camera);
+	renderer.update();
+	let mut command_encoder = renderer.new_command_encoder(Some(&camera));
+	command_encoder.begin_pass(&mut voxelization_pass);
+	command_encoder.finish();
+
+	let mut command_encoder = renderer.new_command_encoder(Some(&camera));
+	command_encoder.begin_pass(&mut meshify_pass);
+	command_encoder.finish();
 
 	let mut instant = std::time::Instant::now();
 
@@ -54,7 +72,7 @@ fn main() {
 			match w {
 				ElementState::Pressed => {
 					let direction = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(0.0, 0.0, 1.0),
 					);
 
@@ -65,7 +83,7 @@ fn main() {
 			match a {
 				ElementState::Pressed => {
 					let direction = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(1.0, 0.0, 0.0),
 					);
 
@@ -76,7 +94,7 @@ fn main() {
 			match s {
 				ElementState::Pressed => {
 					let direction = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(0.0, 0.0, -1.0),
 					);
 
@@ -87,7 +105,7 @@ fn main() {
 			match d {
 				ElementState::Pressed => {
 					let direction = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(-1.0, 0.0, 0.0),
 					);
 
@@ -98,7 +116,7 @@ fn main() {
 			match c {
 				ElementState::Pressed => {
 					let direction = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(0.0, 1.0, 0.0),
 					);
 
@@ -109,7 +127,7 @@ fn main() {
 			match space {
 				ElementState::Pressed => {
 					let direction = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(0.0, -1.0, 0.0),
 					);
 
@@ -118,9 +136,7 @@ fn main() {
 				_ => {}
 			}
 		}
-
-		camera.position += movement;
-		app.renderer.update_camera(&camera);
+		camera.set_position(camera.position() + movement);
 
 		match event {
 			Event::WindowEvent {
@@ -128,8 +144,8 @@ fn main() {
 				window_id,
 			} if window_id == window.id() => match event {
 				WindowEvent::Resized(size) => {
-					camera.aspect = ((window.inner_size().width as f32) / (window.inner_size().height as f32));
-					app.renderer.resize(size.width, size.height);
+					// camera.aspect = ((window.inner_size().width as f32) / (window.inner_size().height as f32));
+					renderer.resize(size.width, size.height);
 				},
 				WindowEvent::CloseRequested
 				| WindowEvent::KeyboardInput {
@@ -204,7 +220,7 @@ fn main() {
 					..
 				} => match *state {
 					winit::event::ElementState::Pressed => {
-						app.renderer.render_voxels = !app.renderer.render_voxels;
+						// app.renderer.render_voxels = !app.renderer.render_voxels;
 					},
 					_ => {}
 				}
@@ -214,23 +230,26 @@ fn main() {
 			Event::DeviceEvent { event, .. } => match event {
 				DeviceEvent::MouseMotion { delta } => {
 					let right = glm::quat_rotate_vec3(
-						&glm::quat_inverse(&camera.rotation),
+						&glm::quat_inverse(&camera.rotation()),
 						&glm::vec3(1.0, 0.0, 0.0),
 					);
 					let up = glm::vec3(0.0_f32, 1.0, 0.0);
 
-					camera.rotation =
-						glm::quat_rotate(&camera.rotation, delta.0 as f32 * delta_time as f32 * CAMERA_ROTATION_SPEED, &up);
-					camera.rotation = glm::quat_rotate(
-						&camera.rotation,
+					camera.set_rotation(glm::quat_rotate(&camera.rotation(), delta.0 as f32 * delta_time as f32 * CAMERA_ROTATION_SPEED, &up));
+					camera.set_rotation(glm::quat_rotate(
+						&camera.rotation(),
 						delta.1 as f32 * delta_time as f32* CAMERA_ROTATION_SPEED,
 						&right,
-					);
+					));
 				}
 				_ => {}
 			},
 			Event::MainEventsCleared => {
-				app.renderer.render().unwrap();
+				// TODO: update function and new command_encoder function
+				renderer.update();
+				let mut command_encoder = renderer.new_command_encoder(Some(&camera));
+				command_encoder.begin_pass(&mut render_meshify_pass);
+				command_encoder.finish();
 			}
 			_ => {}
 		}

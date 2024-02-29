@@ -46,7 +46,7 @@ pub fn derive_bind_group(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 					// layout_entries.append_all(parse_attributes_for_layout(binding, f));
 
 					let resource_binding: proc_macro2::TokenStream = format!(
-						"::wgpu_helper::BufferTrait::get_binding(self.{})",
+						"::wgpu_helper::BindGroupItem::get_binding(self.{})",
 						field_name
 					)
 					.parse()

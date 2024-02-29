@@ -1,5 +1,61 @@
 use std::ops::Range;
 
+use wgpu_helper::{
+	bind_group::{BindGroup, BindGroupType},
+	*,
+};
+
+pub const COMPUTE_MESH_BIND_GROUP_LAYOUT: &'static wgpu::BindGroupLayoutDescriptor =
+	&wgpu::BindGroupLayoutDescriptor {
+		label: Some("Mesh Bind Group Layout"),
+		entries: &[
+			wgpu::BindGroupLayoutEntry {
+				binding: 0,
+				visibility: wgpu::ShaderStages::COMPUTE,
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Storage { read_only: true },
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			},
+			wgpu::BindGroupLayoutEntry {
+				binding: 1,
+				visibility: wgpu::ShaderStages::COMPUTE,
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Storage { read_only: true },
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			},
+			wgpu::BindGroupLayoutEntry {
+				binding: 2,
+				visibility: wgpu::ShaderStages::COMPUTE,
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Storage { read_only: true },
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			},
+			wgpu::BindGroupLayoutEntry {
+				binding: 3,
+				visibility: wgpu::ShaderStages::COMPUTE,
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Storage { read_only: true },
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			},
+		],
+	};
+
+#[derive(BindGroup)]
+#[layout(COMPUTE_MESH_BIND_GROUP_LAYOUT)]
+pub struct ComputeMeshBindGroup {}
+
 pub struct Mesh {
 	pub vertex_buffer: wgpu::Buffer,
 	pub positions: Range<wgpu::BufferAddress>,
@@ -14,7 +70,7 @@ pub struct Mesh {
 pub struct Primitive {
 	pub index: Range<u32>,
 	// pub skin: Range<wgpu::BufferAddress>,
-	pub material: uuid::Uuid,
+	pub material: crate::Id,
 }
 
 pub struct Material {
@@ -30,53 +86,6 @@ pub struct Texture {
 	pub sampler: wgpu::Sampler,
 }
 
-impl Texture {
-	pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-
-	pub fn create_depth_texture(
-		device: &wgpu::Device,
-		config: &wgpu::SurfaceConfiguration,
-	) -> Self {
-		let size = wgpu::Extent3d {
-			width: config.width,
-			height: config.height,
-			depth_or_array_layers: 1,
-		};
-
-		let desc = wgpu::TextureDescriptor {
-			label: Some("Depth Buffer"),
-			size,
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: Self::DEPTH_FORMAT,
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-			view_formats: &[],
-		};
-
-		let texture = device.create_texture(&desc);
-
-		let view = texture.create_view(&Default::default());
-		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-			address_mode_u: wgpu::AddressMode::ClampToEdge,
-			address_mode_v: wgpu::AddressMode::ClampToEdge,
-			address_mode_w: wgpu::AddressMode::ClampToEdge,
-			mag_filter: wgpu::FilterMode::Linear,
-			min_filter: wgpu::FilterMode::Linear,
-			mipmap_filter: wgpu::FilterMode::Nearest,
-			compare: Some(wgpu::CompareFunction::LessEqual),
-			lod_min_clamp: 0.0,
-			lod_max_clamp: 100.0,
-			..Default::default()
-		});
-
-		Self {
-			texture,
-			view,
-			sampler,
-		}
-	}
-}
 
 pub type Index = u32;
 
@@ -120,7 +129,7 @@ impl VertexNormals {
 	}
 }
 
-/// TODO: Figure out why uv0 cant be unpacked as u16 from u32 
+/// TODO: Figure out why uv0 cant be unpacked as u16 from u32
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct VertexColors {

@@ -1,15 +1,13 @@
 use std::collections::HashMap;
 
-use super::context::GraphicsContext;
+use wgpu_helper::bind_group::BindGroupType;
+
+use crate::InternalRenderer;
 
 use super::mesh::*;
 
-pub fn load_gltf<P: AsRef<std::path::Path>>(
-	context: &GraphicsContext,
-	meshes: &mut Vec<Mesh>,
-	materials: &mut HashMap<uuid::Uuid, Material>,
-	model_bind_group_layout: &wgpu::BindGroupLayout,
-	material_bind_group_layout: &wgpu::BindGroupLayout,
+pub(crate) fn load_gltf<P: AsRef<std::path::Path>>(
+	renderer: &InternalRenderer,
 	path: P,
 	_is_static: bool,
 ) -> Vec<crate::camera::Camera> {
@@ -20,11 +18,7 @@ pub fn load_gltf<P: AsRef<std::path::Path>>(
 	for scene in document.scenes() {
 		for node in scene.nodes() {
 			check_node(
-				context,
-				meshes,
-				materials,
-				model_bind_group_layout,
-				material_bind_group_layout,
+				renderer,
 				node,
 				&mut cameras,
 				&buffers,
@@ -37,11 +31,7 @@ pub fn load_gltf<P: AsRef<std::path::Path>>(
 }
 
 fn check_node(
-	context: &GraphicsContext,
-	meshes: &mut Vec<Mesh>,
-	materials: &mut HashMap<uuid::Uuid, Material>,
-	model_bind_group_layout: &wgpu::BindGroupLayout,
-	material_bind_group_layout: &wgpu::BindGroupLayout,
+	renderer: &InternalRenderer,
 	node: gltf::Node<'_>,
 	cameras: &mut Vec<crate::camera::Camera>,
 	buffers: &Vec<gltf::buffer::Data>,
@@ -49,11 +39,7 @@ fn check_node(
 ) {
 	for child in node.children() {
 		check_node(
-			context,
-			meshes,
-			materials,
-			model_bind_group_layout,
-			material_bind_group_layout,
+			renderer,
 			child,
 			cameras,
 			buffers,
@@ -62,35 +48,33 @@ fn check_node(
 	}
 
 	use gltf::camera::Projection::Perspective;
-	if node.camera().is_some() {
-		let transform = node.transform().decomposed();
-		let camera = node.camera().unwrap();
-		match camera.projection() {
-			Perspective(perspective) => {
-				cameras.push(crate::camera::Camera::new(
-					transform.0.into(),
-					perspective.yfov(),
-					perspective.aspect_ratio().unwrap_or(16.0 / 9.0),
-					perspective.zfar().unwrap_or_default(),
-					perspective.znear(),
-					transform.1.into(),
-				));
-			}
-			_ => {}
-		}
-	} else if node.mesh().is_some() {
+	// if node.camera().is_some() {
+	// 	let transform = node.transform().decomposed();
+	// 	let camera = node.camera().unwrap();
+	// 	match camera.projection() {
+	// 		Perspective(perspective) => {
+	// 			cameras.push(crate::camera::Camera::new(
+	// 				transform.0.into(),
+	// 				perspective.yfov(),
+	// 				perspective.aspect_ratio().unwrap_or(16.0 / 9.0),
+	// 				perspective.zfar().unwrap_or_default(),
+	// 				perspective.znear(),
+	// 				transform.1.into(),
+	// 			));
+	// 		}
+	// 		_ => {}
+	// 	}
+	// } else 
+	if node.mesh().is_some() {
 		let mesh = get_mesh(
-			context,
-			meshes,
-			materials,
-			model_bind_group_layout,
-			material_bind_group_layout,
+			renderer,
 			node,
 			buffers,
 			&textures,
 		);
 
-		meshes.push(mesh);
+		let id = renderer.new_id();
+		renderer.meshes.insert(id, mesh);
 	} else if let Some(light) = node.light() {
 		match light.kind() {
 			gltf::khr_lights_punctual::Kind::Directional => {}
@@ -101,11 +85,7 @@ fn check_node(
 }
 
 fn get_mesh(
-	context: &GraphicsContext,
-	meshes: &mut Vec<Mesh>,
-	materials: &mut HashMap<uuid::Uuid, Material>,
-	model_bind_group_layout: &wgpu::BindGroupLayout,
-	material_bind_group_layout: &wgpu::BindGroupLayout,
+	renderer: &InternalRenderer,
 	node: gltf::Node<'_>,
 	buffers: &Vec<gltf::buffer::Data>,
 	textures: &Vec<gltf::image::Data>,
@@ -123,14 +103,10 @@ fn get_mesh(
 
 	for gltf_primitive in mesh.primitives() {
 		let material = gltf_primitive.material();
-		let id = uuid::Uuid::new_v4();
+		let id = renderer.new_id();
 		get_material(
-			context,
-			&id,
-			meshes,
-			materials,
-			model_bind_group_layout,
-			material_bind_group_layout,
+			renderer,
+			id,
 			&material,
 			&textures,
 		);
@@ -139,7 +115,7 @@ fn get_mesh(
 
 		align_vector(
 			&mut indices,
-			context.device.limits().min_storage_buffer_offset_alignment as usize,
+			renderer.device.limits().min_storage_buffer_offset_alignment as usize,
 			0,
 		);
 
@@ -178,7 +154,7 @@ fn get_mesh(
 
 	align_vector(
 		&mut vertex_data,
-		context.device.limits().min_storage_buffer_offset_alignment as usize,
+		renderer.device.limits().min_storage_buffer_offset_alignment as usize,
 		0,
 	);
 
@@ -221,7 +197,7 @@ fn get_mesh(
 
 	align_vector(
 		&mut vertex_data,
-		context.device.limits().min_storage_buffer_offset_alignment as usize,
+		renderer.device.limits().min_storage_buffer_offset_alignment as usize,
 		0,
 	);
 
@@ -257,7 +233,7 @@ fn get_mesh(
 
 	let colors = colors_start..(vertex_data.len() as wgpu::BufferAddress);
 
-	let vertex_buffer = context
+	let vertex_buffer = renderer
 		.device
 		.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("A Vertex Buffer"),
@@ -265,7 +241,7 @@ fn get_mesh(
 			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
 		});
 
-	let index_buffer = context
+	let index_buffer = renderer
 		.device
 		.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("A Index Buffer"),
@@ -273,7 +249,7 @@ fn get_mesh(
 			usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::STORAGE,
 		});
 
-	let transform_buffer = context
+	let transform_buffer = renderer
 		.device
 		.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("A transform buffer"),
@@ -283,11 +259,11 @@ fn get_mesh(
 				| wgpu::BufferUsages::COPY_SRC,
 		});
 
-	let model_bind_group = context
+	let model_bind_group = renderer
 		.device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("A model bind group"),
-			layout: model_bind_group_layout,
+			layout: crate::ModelBindGroup::get_bind_group_layout(&renderer.device),
 			entries: &[wgpu::BindGroupEntry {
 				binding: 0,
 				resource: transform_buffer.as_entire_binding(),
@@ -307,12 +283,8 @@ fn get_mesh(
 }
 
 fn get_material(
-	context: &GraphicsContext,
-	id: &uuid::Uuid,
-	meshes: &mut Vec<Mesh>,
-	materials: &mut HashMap<uuid::Uuid, Material>,
-	model_bind_group_layout: &wgpu::BindGroupLayout,
-	material_bind_group_layout: &wgpu::BindGroupLayout,
+	renderer: &InternalRenderer,
+	id: crate::Id,
 	material: &gltf::Material,
 	textures: &Vec<gltf::image::Data>,
 ) {
@@ -322,8 +294,8 @@ fn get_material(
 	const DEFAULT_METAL: &[u8] = include_bytes!("default_textures/MetallicRoughnessMap.png");
 	const DEFAULT_NORMAL: &[u8] = include_bytes!("default_textures/NormalMap.png");
 
-	let new_default_sampler = |context: &GraphicsContext| -> wgpu::Sampler {
-		return context.device.create_sampler(&wgpu::SamplerDescriptor {
+	let new_default_sampler = |renderer: &InternalRenderer| -> wgpu::Sampler {
+		return renderer.device.create_sampler(&wgpu::SamplerDescriptor {
 			label: Some("Default Sampler"),
 			address_mode_u: wgpu::AddressMode::Repeat,
 			address_mode_v: wgpu::AddressMode::Repeat,
@@ -350,26 +322,26 @@ fn get_material(
 				}
 
 				let (texture, view) =
-					get_texture(context, &data[..], texture_data.width, texture_data.height);
-				let sampler = new_default_sampler(context);
+					get_texture(renderer, &data[..], texture_data.width, texture_data.height);
+				let sampler = new_default_sampler(renderer);
 				(texture, view, sampler)
 			}
 			gltf::image::Format::R8G8B8A8 => {
 				let (texture, view) = get_texture(
-					context,
+					renderer,
 					&texture_data.pixels,
 					texture_data.width,
 					texture_data.height,
 				);
-				let sampler = new_default_sampler(context);
+				let sampler = new_default_sampler(renderer);
 				(texture, view, sampler)
 			}
 			_ => {
 				let image = image::load_from_memory(DEFAULT_DIFFUSE).unwrap();
 				let dimensions = image.dimensions();
 				let (texture, view) =
-					get_texture(context, &image.to_rgba8(), dimensions.0, dimensions.1);
-				(texture, view, new_default_sampler(context))
+					get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
+				(texture, view, new_default_sampler(renderer))
 			}
 		};
 
@@ -377,28 +349,28 @@ fn get_material(
 	} else {
 		let image = image::load_from_memory(DEFAULT_DIFFUSE).unwrap();
 		let dimensions = image.dimensions();
-		let (texture, view) = get_texture(context, &image.to_rgba8(), dimensions.0, dimensions.1);
-		(texture, view, new_default_sampler(context))
+		let (texture, view) = get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
+		(texture, view, new_default_sampler(renderer))
 	};
 
 	let (metal_texture, metal_view, metal_sampler) = {
 		let image = image::load_from_memory(DEFAULT_METAL).unwrap();
 		let dimensions = image.dimensions();
-		let (texture, view) = get_texture(context, &image.to_rgba8(), dimensions.0, dimensions.1);
-		(texture, view, new_default_sampler(context))
+		let (texture, view) = get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
+		(texture, view, new_default_sampler(renderer))
 	};
 
 	let (normal_texture, normal_view, normal_sampler) = {
 		let image = image::load_from_memory(DEFAULT_NORMAL).unwrap();
 		let dimensions = image.dimensions();
-		let (texture, view) = get_texture(context, &image.to_rgba8(), dimensions.0, dimensions.1);
-		(texture, view, new_default_sampler(context))
+		let (texture, view) = get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
+		(texture, view, new_default_sampler(renderer))
 	};
 
-	let bind_group = context
+	let bind_group = renderer
 		.device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: material_bind_group_layout,
+			layout: crate::MaterialBindGroup::get_bind_group_layout(&renderer.device),
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
@@ -428,7 +400,7 @@ fn get_material(
 			label: Some("material bind group"),
 		});
 
-	materials.insert(
+	renderer.materials.insert(
 		id.to_owned(),
 		Material {
 			diffuse: Texture {
@@ -452,7 +424,7 @@ fn get_material(
 }
 
 fn get_texture(
-	context: &GraphicsContext,
+	renderer: &InternalRenderer,
 	bytes: &[u8],
 	width: u32,
 	height: u32,
@@ -463,7 +435,7 @@ fn get_texture(
 		depth_or_array_layers: 1,
 	};
 
-	let texture = context.device.create_texture(&wgpu::TextureDescriptor {
+	let texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
 		size: texture_size,
 		mip_level_count: 1,
 		sample_count: 1,
@@ -474,7 +446,7 @@ fn get_texture(
 		view_formats: &[],
 	});
 
-	context.queue.write_texture(
+	renderer.queue.write_texture(
 		wgpu::ImageCopyTexture {
 			texture: &texture,
 			mip_level: 0,
