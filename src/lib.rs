@@ -1,8 +1,5 @@
 extern crate nalgebra_glm as glm;
-use wgpu_helper::{
-	bind_group::BindGroup,
-	*,
-};
+use wgpu_helper::{bind_group::BindGroup, *};
 
 use dashmap::DashMap;
 
@@ -20,17 +17,16 @@ pub mod command_encoder;
 pub mod lights;
 pub mod load_gltf;
 pub mod mesh;
+pub mod resources;
 mod scene;
 pub mod transform;
-pub mod resources;
 // pub mod model;
 // pub mod texture;
-
-// use crate::model;
 
 pub type Id = u64;
 
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+pub const DIFFUSE_BUFFER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 pub const MATERIAL_BIND_GROUP_LAYOUT: &'static wgpu::BindGroupLayoutDescriptor =
 	&wgpu::BindGroupLayoutDescriptor {
@@ -119,25 +115,41 @@ pub struct MaterialBindGroup<'a> {
 pub const MODEL_BIND_GROUP_LAYOUT: &'static wgpu::BindGroupLayoutDescriptor =
 	&wgpu::BindGroupLayoutDescriptor {
 		label: Some("Model Bind group layout"),
-		entries: &[wgpu::BindGroupLayoutEntry {
-			binding: 0,
-			visibility: wgpu::ShaderStages::union(
-				wgpu::ShaderStages::VERTEX,
-				wgpu::ShaderStages::COMPUTE,
-			),
-			ty: wgpu::BindingType::Buffer {
-				ty: wgpu::BufferBindingType::Uniform,
-				has_dynamic_offset: false,
-				min_binding_size: None,
+		entries: &[
+			wgpu::BindGroupLayoutEntry {
+				binding: 0,
+				visibility: wgpu::ShaderStages::union(
+					wgpu::ShaderStages::VERTEX_FRAGMENT,
+					wgpu::ShaderStages::COMPUTE,
+				),
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Uniform,
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
 			},
-			count: None,
-		}],
+			wgpu::BindGroupLayoutEntry {
+				binding: 1,
+				visibility: wgpu::ShaderStages::union(
+					wgpu::ShaderStages::VERTEX_FRAGMENT,
+					wgpu::ShaderStages::COMPUTE,
+				),
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Uniform,
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			},
+		],
 	};
 
 #[derive(BindGroup)]
 #[layout(MODEL_BIND_GROUP_LAYOUT)]
 pub struct ModelBindGroup<'a> {
 	pub transform: &'a wgpu_helper::Buffer<types::mat4x4f>,
+	pub normal_transform: &'a wgpu_helper::Buffer<types::mat3x3f>,
 }
 
 pub struct Renderer {
@@ -165,7 +177,10 @@ impl Renderer {
 		self.renderer.update();
 	}
 
-	pub fn new_command_encoder<'renderer, 'camera: 'renderer>(&'renderer self, camera: Option<&'camera camera::Camera>) -> command_encoder::CommandEncoder {
+	pub fn new_command_encoder<'renderer, 'camera: 'renderer>(
+		&'renderer self,
+		camera: Option<&'camera camera::Camera>,
+	) -> command_encoder::CommandEncoder {
 		command_encoder::CommandEncoder::<'renderer, 'camera>::new(&self, camera)
 	}
 
@@ -240,6 +255,7 @@ impl InternalRenderer {
 			.await
 			.unwrap();
 
+		// TODO: Remove, as they are temporary to allow for voxel debug rendering
 		let mut limits = wgpu::Limits::default();
 		limits.max_buffer_size = 268_435_456 * 4;
 		limits.max_storage_buffer_binding_size = 134_217_728 * 8;
@@ -292,6 +308,15 @@ impl InternalRenderer {
 		self.surface.configure(&self.device, &conf);
 	}
 
+	pub fn get_resolution(&self) -> [u32; 2] {
+		let lock = self.config.lock().unwrap();
+		[lock.width, lock.height]
+	}
+
+	pub fn get_scaled_resolution(&self) -> [u32; 2] {
+		todo!()
+	}
+
 	pub fn update(&self) {
 		for mut camera in self.cameras.iter_mut() {
 			camera.update(&self);
@@ -305,7 +330,7 @@ impl InternalRenderer {
 }
 
 pub struct RendererSettings {
-	pub resolution: [u32; 2],
+	pub render_scale: f32,
 	pub extras: HashMap<String, u8>,
 }
 
@@ -325,9 +350,7 @@ impl ResourceManager {
 	}
 
 	pub fn get_handle<'manager>(&'manager self) -> ResourceManagerHandle<'manager> {
-		ResourceManagerHandle {
-			manager: self
-		}
+		ResourceManagerHandle { manager: self }
 	}
 
 	pub fn get_resource<T: Resource>(&self) -> Option<ResourceHandle<T>> {
@@ -358,10 +381,8 @@ impl ResourceManager {
 		let mut lock = self.map.write().unwrap();
 		let old = lock.insert(core::any::TypeId::of::<T>(), Box::new(resource));
 		match old {
-			Some(old) => {
-				Some(unsafe { Box::from_raw(Box::into_raw(old).cast::<T>()) })
-			},
-			None => None
+			Some(old) => Some(unsafe { Box::from_raw(Box::into_raw(old).cast::<T>()) }),
+			None => None,
 		}
 	}
 
@@ -369,10 +390,8 @@ impl ResourceManager {
 		let mut lock = self.map.write().unwrap();
 		let old = lock.remove(&core::any::TypeId::of::<T>());
 		match old {
-			Some(old) => {
-				Some(unsafe { Box::from_raw(Box::into_raw(old).cast::<T>()) })
-			},
-			None => None
+			Some(old) => Some(unsafe { Box::from_raw(Box::into_raw(old).cast::<T>()) }),
+			None => None,
 		}
 	}
 
@@ -380,10 +399,8 @@ impl ResourceManager {
 		let mut lock = self.map.write().unwrap();
 		let old = lock.remove(&core::any::TypeId::of::<T>());
 		match old {
-			Some(old) => {
-				Some(unsafe { *Box::into_raw(old).cast::<T>() })
-			},
-			None => None
+			Some(old) => Some(unsafe { *Box::into_raw(old).cast::<T>() }),
+			None => None,
 		}
 	}
 }
@@ -423,8 +440,12 @@ impl<'manager, T: Resource> Deref for ResourceHandle<'manager, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		let inner = self.read_guard.get(&core::any::TypeId::of::<T>()).unwrap().as_ref();
-		unsafe { &*(inner as *const dyn Resource as *const T)}
+		let inner = self
+			.read_guard
+			.get(&core::any::TypeId::of::<T>())
+			.unwrap()
+			.as_ref();
+		unsafe { &*(inner as *const dyn Resource as *const T) }
 	}
 }
 
@@ -437,14 +458,22 @@ impl<'manager, T: Resource> Deref for ResourceHandleMut<'manager, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		let inner = self.lock.get(&core::any::TypeId::of::<T>()).unwrap().as_ref();
-		unsafe { &*(inner as *const dyn Resource as *const T)}
+		let inner = self
+			.lock
+			.get(&core::any::TypeId::of::<T>())
+			.unwrap()
+			.as_ref();
+		unsafe { &*(inner as *const dyn Resource as *const T) }
 	}
 }
 
 impl<'manager, T: Resource> DerefMut for ResourceHandleMut<'manager, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		let inner = self.lock.get_mut(&core::any::TypeId::of::<T>()).unwrap().as_mut();
-		unsafe { &mut *(inner as *mut dyn Resource as *mut T)}
+		let inner = self
+			.lock
+			.get_mut(&core::any::TypeId::of::<T>())
+			.unwrap()
+			.as_mut();
+		unsafe { &mut *(inner as *mut dyn Resource as *mut T) }
 	}
 }

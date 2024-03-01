@@ -4,6 +4,7 @@ use dashmap::DashMap;
 
 pub mod forward;
 pub mod voxelization;
+pub mod present;
 
 pub struct CommandEncoder<'renderer, 'camera> {
 	renderer: &'renderer crate::Renderer,
@@ -71,7 +72,7 @@ impl<'renderer, 'camera> CommandEncoder<'renderer, 'camera> {
 	}
 
 	pub(crate) fn get_surface_texture_view(&self) -> wgpu::TextureView {
-		// TODO: Replace with new camera/global resolution specific function
+		// TODO: Replace with camera/global resolution based function
 
 		let mut lock = self.surface.lock().unwrap();
 		

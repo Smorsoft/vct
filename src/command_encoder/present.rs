@@ -48,7 +48,7 @@ impl ForwardRenderingPass {
 						module: &shader,
 						entry_point: "fs_main",
 						targets: &[Some(wgpu::ColorTargetState {
-							format: renderer.renderer.config.lock().unwrap().format, // TODO: Change for better
+							format: renderer.renderer.config.lock().unwrap().format,
 							blend: Some(wgpu::BlendState::REPLACE),
 							write_mask: wgpu::ColorWrites::ALL,
 						})],
@@ -132,27 +132,7 @@ impl RenderPassTrait for ForwardRenderingPass {
 				occlusion_query_set: None,
 				timestamp_writes: None,
 			});
-
-			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_bind_group(0, unsafe { &command_encoder.get_camera_bind_group().unwrap().as_untyped() }, &[]);
-
-			for mesh in meshes.meshes.iter() {
-				render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);
-				render_pass
-					.set_vertex_buffer(0, mesh.vertex_buffer.slice(mesh.positions.to_owned()));
-				render_pass.set_vertex_buffer(1, mesh.vertex_buffer.slice(mesh.normals.to_owned()));
-				render_pass.set_vertex_buffer(2, mesh.vertex_buffer.slice(mesh.colors.to_owned()));
-				render_pass
-					.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-				for primitive in mesh.primitives.iter() {
-					render_pass.set_bind_group(
-						2,
-						&materials.materials.get(&primitive.material).unwrap().bind_group,
-						&[],
-					);
-					render_pass.draw_indexed(primitive.index.to_owned(), 0, 0..1);
-				}
-			}
+			
 		}
 
 		

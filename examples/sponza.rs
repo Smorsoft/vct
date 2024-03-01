@@ -22,7 +22,7 @@ fn main() {
 	window.set_maximized(true);
 
 	let render_settings = RendererSettings {
-		resolution: [1920, 1080],
+		render_scale: 1.0,
 		extras: HashMap::new(),
 	};
 

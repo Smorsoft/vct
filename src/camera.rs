@@ -40,14 +40,8 @@ pub struct Camera {
 }
 
 impl Camera {
-	pub(crate) fn new(
-		renderer: Rc<crate::InternalRenderer>,
-		id: crate::Id,
-	) -> Self {
-		Self {
-			renderer,
-			id,
-		}
+	pub(crate) fn new(renderer: Rc<crate::InternalRenderer>, id: crate::Id) -> Self {
+		Self { renderer, id }
 	}
 
 	pub fn get_resolution(&self) -> [u32; 2] {
@@ -56,11 +50,7 @@ impl Camera {
 		match inner.resolution {
 			Resolution::Custom(res) => res,
 			Resolution::UseGlobalResolution => {
-				let conf = self.renderer.config.lock().unwrap();
-				[
-					conf.width,
-					conf.height
-				]
+				self.renderer.get_resolution()
 			}
 		}
 	}
@@ -88,18 +78,21 @@ impl Camera {
 		let texture = self.renderer.device.create_texture(&desc);
 
 		let view = texture.create_view(&Default::default());
-		let sampler = self.renderer.device.create_sampler(&wgpu::SamplerDescriptor {
-			address_mode_u: wgpu::AddressMode::ClampToEdge,
-			address_mode_v: wgpu::AddressMode::ClampToEdge,
-			address_mode_w: wgpu::AddressMode::ClampToEdge,
-			mag_filter: wgpu::FilterMode::Linear,
-			min_filter: wgpu::FilterMode::Linear,
-			mipmap_filter: wgpu::FilterMode::Nearest,
-			compare: Some(wgpu::CompareFunction::LessEqual),
-			lod_min_clamp: 0.0,
-			lod_max_clamp: 100.0,
-			..Default::default()
-		});
+		let sampler = self
+			.renderer
+			.device
+			.create_sampler(&wgpu::SamplerDescriptor {
+				address_mode_u: wgpu::AddressMode::ClampToEdge,
+				address_mode_v: wgpu::AddressMode::ClampToEdge,
+				address_mode_w: wgpu::AddressMode::ClampToEdge,
+				mag_filter: wgpu::FilterMode::Linear,
+				min_filter: wgpu::FilterMode::Linear,
+				mipmap_filter: wgpu::FilterMode::Nearest,
+				compare: Some(wgpu::CompareFunction::LessEqual),
+				lod_min_clamp: 0.0,
+				lod_max_clamp: 100.0,
+				..Default::default()
+			});
 
 		crate::mesh::Texture {
 			texture,
@@ -167,9 +160,7 @@ impl Camera {
 		inner.zfar = zfar;
 		inner.dirty = true;
 	}
-
 }
-
 
 pub struct CameraDescriptor {
 	pub position: glm::Vec3,
@@ -194,11 +185,12 @@ pub(crate) struct InternalCamera {
 }
 
 impl InternalCamera {
-	pub fn new(
-		renderer: &crate::InternalRenderer,
-		descriptor: &CameraDescriptor,
-	) -> Self {
-		let buffer = Buffer::<types::mat4x4f>::new(&renderer.device, wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM, false);
+	pub fn new(renderer: &crate::InternalRenderer, descriptor: &CameraDescriptor) -> Self {
+		let buffer = Buffer::<types::mat4x4f>::new(
+			&renderer.device,
+			wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+			false,
+		);
 
 		let camera_bind_group = CameraBindGroup { camera: &buffer };
 
@@ -222,7 +214,7 @@ impl InternalCamera {
 	}
 
 	pub fn update(&mut self, renderer: &crate::InternalRenderer) {
-		if !self.dirty  {
+		if !self.dirty {
 			return;
 		}
 
@@ -232,22 +224,25 @@ impl InternalCamera {
 		view = glm::quat_to_mat4(&self.rotation) * view;
 
 		let aspect_ratio = match self.resolution {
-			Resolution::Custom(res) => {
-				res[0] as f32 / res[1] as f32
-			},
+			Resolution::Custom(res) => res[0] as f32 / res[1] as f32,
 			Resolution::UseGlobalResolution => {
-				renderer.settings.resolution[0] as f32 / renderer.settings.resolution[1] as f32
+				let global_resolution = renderer.get_resolution();
+				global_resolution[0] as f32 / global_resolution[1] as f32
 			}
 		};
-		
-		let proj = glm::perspective(aspect_ratio, self.fovy, self.znear, self.zfar);
 
-		let matrix: [[f32; 4]; 4] = (OPENGL_TO_WGPU_MATRIX * proj * view).into();
+		let proj = glm::perspective(
+			aspect_ratio,
+			self.fovy * (std::f32::consts::PI / 180.0),
+			self.znear,
+			self.zfar,
+		);
+
+		let matrix: [[f32; 4]; 4] = (proj * view).into();
 
 		self.buffer.write_to(&renderer.queue, &matrix.into());
 	}
 }
-
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: glm::Mat4x4 = glm::Mat4x4::new(

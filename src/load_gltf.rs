@@ -17,13 +17,7 @@ pub(crate) fn load_gltf<P: AsRef<std::path::Path>>(
 
 	for scene in document.scenes() {
 		for node in scene.nodes() {
-			check_node(
-				renderer,
-				node,
-				&mut cameras,
-				&buffers,
-				&textures,
-			)
+			check_node(renderer, node, &mut cameras, &buffers, &textures)
 		}
 	}
 
@@ -38,13 +32,7 @@ fn check_node(
 	textures: &Vec<gltf::image::Data>,
 ) {
 	for child in node.children() {
-		check_node(
-			renderer,
-			child,
-			cameras,
-			buffers,
-			&textures,
-		);
+		check_node(renderer, child, cameras, buffers, &textures);
 	}
 
 	use gltf::camera::Projection::Perspective;
@@ -64,14 +52,9 @@ fn check_node(
 	// 		}
 	// 		_ => {}
 	// 	}
-	// } else 
+	// } else
 	if node.mesh().is_some() {
-		let mesh = get_mesh(
-			renderer,
-			node,
-			buffers,
-			&textures,
-		);
+		let mesh = get_mesh(renderer, node, buffers, &textures);
 
 		let id = renderer.new_id();
 		renderer.meshes.insert(id, mesh);
@@ -104,12 +87,7 @@ fn get_mesh(
 	for gltf_primitive in mesh.primitives() {
 		let material = gltf_primitive.material();
 		let id = renderer.new_id();
-		get_material(
-			renderer,
-			id,
-			&material,
-			&textures,
-		);
+		get_material(renderer, id, &material, &textures);
 
 		let reader = gltf_primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
@@ -259,15 +237,35 @@ fn get_mesh(
 				| wgpu::BufferUsages::COPY_SRC,
 		});
 
+	let normal_matrix_4x4: glm::Mat4x4 = node.transform().matrix().into();
+	let normal_matrix: glm::Mat4x4 =
+		glm::mat3_to_mat4(&glm::mat4_to_mat3(&normal_matrix_4x4.try_inverse().unwrap().transpose()));
+
+	let normal_buffer = renderer
+		.device
+		.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("A normal matrix buffer"),
+			contents: bytemuck::cast_slice(&normal_matrix.as_slice()),
+			usage: wgpu::BufferUsages::UNIFORM
+				| wgpu::BufferUsages::COPY_DST
+				| wgpu::BufferUsages::COPY_SRC,
+		});
+
 	let model_bind_group = renderer
 		.device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("A model bind group"),
 			layout: crate::ModelBindGroup::get_bind_group_layout(&renderer.device),
-			entries: &[wgpu::BindGroupEntry {
-				binding: 0,
-				resource: transform_buffer.as_entire_binding(),
-			}],
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: transform_buffer.as_entire_binding(),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: normal_buffer.as_entire_binding(),
+				},
+			],
 		});
 
 	Mesh {
