@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 wgpu_helper = { path = "wgpu_helper" }
 
-wgpu = "0.18"
-winit = "0.28"
+wgpu = "0.19.3"
+winit = "0.29"
 # nalgebra = "0.32"
 nalgebra-glm = "0.18"
 bytemuck = { version = "1.12", features = ["derive"] }

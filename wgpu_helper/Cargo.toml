@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-derive = { path = "derive"}
-wgpu = "0.18"
+derive = { path = "derive" }
+wgpu = "0.19.3"
 
 [dev_dependencies]
 pollster = "0.3"

@@ -11,5 +11,5 @@ proc-macro = true
 [dependencies]
 syn = "2.0"
 quote = "1.0"
-wgpu = "0.18"
+wgpu = "0.19.3"
 proc-macro2 = "1"

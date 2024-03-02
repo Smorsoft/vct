@@ -4,17 +4,16 @@ use std::collections::HashMap;
 
 use vct::{camera::CameraDescriptor, *};
 use winit::{
-	event::*,
-	event_loop::{ControlFlow, EventLoop},
-	window::WindowBuilder,
+	event::*, event_loop::{ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::WindowBuilder
 };
 
 const CAMERA_MOVE_SPEED: f32 = 10.0;
 const CAMERA_ROTATION_SPEED: f32 = 30.0;
 
 fn main() {
-	let event_loop = EventLoop::new();
-	let window = WindowBuilder::new().build(&event_loop).unwrap();
+	let event_loop = EventLoop::new().unwrap();
+	event_loop.set_control_flow(ControlFlow::Poll);
+	let window = std::sync::Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 	window
 		.set_cursor_grab(winit::window::CursorGrabMode::Confined)
 		.unwrap();
@@ -26,7 +25,7 @@ fn main() {
 		extras: HashMap::new(),
 	};
 
-	let mut renderer = pollster::block_on(Renderer::new(&window, render_settings));
+	let mut renderer = pollster::block_on(Renderer::new(window.clone(), render_settings));
 	let _cameras = renderer.load_gltf("examples/Sponza/Sponza.gltf", true);
 	// .load_gltf("examples/Box.glb", true);
 
@@ -63,7 +62,7 @@ fn main() {
 	let mut space = ElementState::Released;
 	let mut render_voxels = false;
 
-	event_loop.run(move |event, _, control_flow| {
+	event_loop.run(move |event, event_loop| {
 		let new_instant = std::time::Instant::now();
 		let delta_time = new_instant.duration_since(instant).as_secs_f64();
 		instant = new_instant;
@@ -151,81 +150,91 @@ fn main() {
 				},
 				WindowEvent::CloseRequested
 				| WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state: ElementState::Pressed,
-							virtual_keycode: Some(VirtualKeyCode::Escape),
+							physical_key: PhysicalKey::Code(KeyCode::Escape),
 							..
 						},
 					..
-				} => *control_flow = ControlFlow::Exit,
+				} => event_loop.exit(),
 				WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state,
-							virtual_keycode: Some(VirtualKeyCode::W),
+							physical_key: PhysicalKey::Code(KeyCode::KeyW),
 							..
 						},
 					..
 				} => w = state.to_owned(),
 				WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state,
-							virtual_keycode: Some(VirtualKeyCode::A),
+							physical_key: PhysicalKey::Code(KeyCode::KeyA),
 							..
 						},
 					..
 				} => a = state.to_owned(),
 				WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state,
-							virtual_keycode: Some(VirtualKeyCode::S),
+							physical_key: PhysicalKey::Code(KeyCode::KeyS),
 							..
 						},
 					..
 				} => s = state.to_owned(),
 				WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state,
-							virtual_keycode: Some(VirtualKeyCode::D),
+							physical_key: PhysicalKey::Code(KeyCode::KeyD),
 							..
 						},
 					..
 				} => d = state.to_owned(),
 				WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state,
-							virtual_keycode: Some(VirtualKeyCode::C),
+							physical_key: PhysicalKey::Code(KeyCode::KeyC),
 							..
 						},
 					..
 				} => c = state.to_owned(),
 				WindowEvent::KeyboardInput {
-					input:
-						KeyboardInput {
+					event:
+						KeyEvent {
 							state,
-							virtual_keycode: Some(VirtualKeyCode::Space),
+							physical_key: PhysicalKey::Code(KeyCode::Space),
 							..
 						},
 					..
 				} => space = state.to_owned(),
 				WindowEvent::KeyboardInput {
-					input: KeyboardInput {
-						state,
-						virtual_keycode: Some(VirtualKeyCode::Q),
-						..
-					},
+					event:
+						KeyEvent {
+							state,
+							physical_key: PhysicalKey::Code(KeyCode::KeyQ),
+							..
+						},
 					..
 				} => match *state {
 					winit::event::ElementState::Pressed => {
 						render_voxels = !render_voxels;
 					},
 					_ => {}
-				}
+				},
+				WindowEvent::KeyboardInput {
+					event:
+						KeyEvent {
+							state: ElementState::Pressed,
+							physical_key: PhysicalKey::Code(KeyCode::KeyF),
+							..
+						},
+					..
+				} => println!("{:#?}", camera.position()),
 
 				_ => {}
 			},
@@ -246,7 +255,7 @@ fn main() {
 				}
 				_ => {}
 			},
-			Event::MainEventsCleared => {
+			Event::AboutToWait => {
 				renderer.update();
 				let mut command_encoder = renderer.new_command_encoder(Some(&camera));
 				if render_voxels {
@@ -255,8 +264,8 @@ fn main() {
 					command_encoder.begin_pass(&mut forward_render_pass);
 				}
 				command_encoder.finish();
-			}
+			},
 			_ => {}
 		}
-	});
+}).unwrap();
 }

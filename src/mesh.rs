@@ -110,15 +110,15 @@ impl VertexPosition {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct VertexNormals {
-	pub normals: [i8; 4],
-	pub tangents: [i8; 4],
+	pub normals: [f32; 3],
+	pub tangents: [f32; 4],
 }
 
 impl VertexNormals {
 	pub const fn desc() -> wgpu::VertexBufferLayout<'static> {
 		const ATTRIBUTES: &'static [wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
-			1 => Uint32,
-			2 => Uint32,
+			1 => Float32x3,
+			2 => Float32x4,
 		];
 
 		wgpu::VertexBufferLayout {

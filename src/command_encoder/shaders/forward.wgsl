@@ -10,7 +10,7 @@ struct PointLight {
 	intensity: f32,
 };
 
-const LIGHT: PointLight = PointLight(vec3(0.0, 1.0, 0.0), vec3(0.05, 0.05, 0.05), 1.0);
+const LIGHT: PointLight = PointLight(vec3(0.0, 1.5, 0.0), vec3(1.0, 1.0, 1.0), 1.0);
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
@@ -37,11 +37,11 @@ var s_normal: sampler;
 @group(3) @binding(0)
 var voxels_color: texture_3d<f32>;
 
-
+// https://www.reddit.com/r/opengl/comments/phwo3g/comment/hbq6tzs/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 
 struct VertexNormals {
-	@location(1) normals: u32,
-	@location(2) tangents: u32,
+	@location(1) normals: vec3<f32>,
+	@location(2) tangents: vec4<f32>,
 };
 
 struct VertexColors {
@@ -55,10 +55,9 @@ struct VertexOutput {
 	@location(0) world_position: vec3<f32>,
 	@location(1) normals: vec3<f32>,
 	@location(2) tangents: vec4<f32>,
-	@location(3) bitangents: vec3<f32>,
-	@location(4) uv0: vec2<f32>,
-	@location(5) uv1: vec2<f32>,
-	@location(6) color: vec4<f32>,
+	@location(3) uv0: vec2<f32>,
+	@location(4) uv1: vec2<f32>,
+	@location(5) color: vec4<f32>,
 };
 
 @vertex
@@ -69,17 +68,18 @@ fn vs_main(
     color: VertexColors,
 ) -> VertexOutput {
     var out: VertexOutput;
-    out.uv0 = color.uv0;
-    out.uv1 = color.uv1;
-
-	out.normals = unpack4x8snorm(normals.normals).xyz;
-	out.tangents = unpack4x8snorm(normals.tangents);
-	out.bitangents = cross(out.normals.xyz, out.tangents.xyz) * out.tangents.w;
-	out.world_position = (model_matrix * vec4(position, 1.0)).xyz;
-
 	// out.uv0 = unpack2x16unorm(color.uv0);
 	// out.uv1 = unpack2x16unorm(color.uv1);
+    out.uv0 = color.uv0;
+    out.uv1 = color.uv1;
     out.color = unpack4x8unorm(color.color);
+
+	// out.normals = normalize(unpack4x8snorm(normals.normals).xyz);
+	// out.tangents = normalize(unpack4x8snorm(normals.tangents));
+    out.normals = normalize(normal_matrix * normals.normals);
+    out.tangents = vec4(normalize(normal_matrix * normals.tangents.xyz), normals.tangents.w);
+    out.world_position = (model_matrix * vec4(position, 1.0)).xyz;
+
 
     out.clip_position = camera.view_proj * model_matrix * vec4<f32>(position, 1.0);
     return out;
@@ -88,36 +88,42 @@ fn vs_main(
 // Fragment shader
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var diffuse: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.uv0);
+    var bitangents = normalize(normal_matrix * (cross(in.normals, in.tangents.xyz) * in.tangents.w));
+
+    let tbn = mat3x3<f32>(
+        normalize(in.tangents.xyz),
+        normalize(bitangents),
+        normalize(in.normals),
+    );
+
+    var dif: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.uv0);
+    var nrm: vec4<f32> = normalize(textureSample(t_normal, s_normal, in.uv0) * 2.0 - 1.0);
+    var pixel_normal: vec3<f32> = normalize(tbn * nrm.xyz);
+
 	// Check for full transparency
-    if diffuse.a == 0.0 {
+    if dif.a == 0.0 {
 		discard;
     }
 
-	let tbn = mat3x3<f32>(
-		normalize((model_matrix * normalize(in.tangents)).xyz), 
-		normalize((model_matrix * normalize(vec4(in.bitangents, 0.0))).xyz),
-		normalize((model_matrix * normalize(vec4(in.normals, 0.0))).xyz)
-	);
 
-	let ambient_strength = 0.1;
-	let ambient_color = LIGHT.color * ambient_strength;
+    let ambient_strength = 0.1;
+    let ambient_color = LIGHT.color * ambient_strength;
 
-	let light_dir = normalize(LIGHT.position - in.world_position);
+    let light_dir = normalize(LIGHT.position - in.world_position);
 
-	let diffuse_strength = max(dot(normal_matrix * in.normals.xyz, light_dir), 0.0);
-	let diffuse_color = LIGHT.color * diffuse_strength;
+    let diffuse_strength = max(dot(pixel_normal, light_dir), 0.0);
+    let diffuse_color = normalize(LIGHT.color) * LIGHT.intensity * diffuse_strength;
 
-	let result = (ambient_color + diffuse_color) * diffuse.rgb;
-
+    let result = (ambient_color + diffuse_color) * dif.rgb;
 
 
     // var lv: vec4<f32> = vec4(0.0);
 	// while (lv.a < 1.0) {
-
+	// 	let origin = in.world_position;
+	// 	let y = pixel_normal;
 	// }
 
 
 
-    return vec4(result, diffuse.a);
+    return vec4(result, dif.a);
 }

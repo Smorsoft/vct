@@ -1,4 +1,5 @@
 extern crate nalgebra_glm as glm;
+use wgpu::rwh::HasWindowHandle;
 use wgpu_helper::{bind_group::BindGroup, *};
 
 use dashmap::DashMap;
@@ -7,7 +8,7 @@ use std::{
 	collections::HashMap,
 	ops::{Deref, DerefMut},
 	rc::Rc,
-	sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
+	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use winit::window::Window;
@@ -152,12 +153,13 @@ pub struct ModelBindGroup<'a> {
 	pub normal_transform: &'a wgpu_helper::Buffer<types::mat3x3f>,
 }
 
+#[derive(Clone)]
 pub struct Renderer {
 	renderer: Rc<InternalRenderer>,
 }
 
 impl Renderer {
-	pub async fn new(window: &Window, settings: RendererSettings) -> Self {
+	pub async fn new(window: Arc<Window>, settings: RendererSettings) -> Self {
 		let renderer = InternalRenderer::new(window, settings).await;
 
 		Self {
@@ -174,7 +176,21 @@ impl Renderer {
 	}
 
 	pub fn update(&self) {
-		self.renderer.update();
+		for mut camera in self.renderer.cameras.iter_mut() {
+			camera.update(&self.renderer);
+		}
+
+		let mut dirty = self.renderer.dirty_settings.lock().unwrap();
+
+		if *dirty {
+			let mut lock = self.renderer.resource_manager.map.write().unwrap();
+
+			for resource in lock.iter_mut() {
+				resource.1.updated_settings(&self)
+			}
+
+			*dirty = false;
+		}
 	}
 
 	pub fn new_command_encoder<'renderer, 'camera: 'renderer>(
@@ -195,6 +211,10 @@ impl Renderer {
 			renderer: self.get_handle(),
 			id,
 		}
+	}
+
+	pub(crate) fn get_resolution(&self) -> [u32; 2] {
+		self.renderer.get_resolution()
 	}
 
 	pub(crate) fn get_resource_manager(&self) -> ResourceManagerHandle {
@@ -221,11 +241,12 @@ impl Renderer {
 }
 
 pub(crate) struct InternalRenderer {
-	pub surface: wgpu::Surface,
+	pub surface: wgpu::Surface<'static>,
 	pub device: wgpu::Device,
 	pub queue: wgpu::Queue,
 	pub config: Mutex<wgpu::SurfaceConfiguration>,
 	pub settings: RendererSettings,
+	dirty_settings: Mutex<bool>,
 
 	// TODO: Better mesh, material and instance storage/references
 	pub meshes: DashMap<Id, mesh::Mesh>,
@@ -236,7 +257,7 @@ pub(crate) struct InternalRenderer {
 }
 
 impl InternalRenderer {
-	pub async fn new(window: &Window, settings: RendererSettings) -> Self {
+	pub async fn new(window: Arc<Window>, settings: RendererSettings) -> Self {
 		let size = window.inner_size();
 
 		// The instance is a handle to our GPU
@@ -245,7 +266,7 @@ impl InternalRenderer {
 			backends: wgpu::Backends::all(),
 			..Default::default()
 		});
-		let surface = unsafe { instance.create_surface(window).unwrap() };
+		let surface = instance.create_surface(window).unwrap();
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
 				power_preference: wgpu::PowerPreference::HighPerformance,
@@ -265,10 +286,10 @@ impl InternalRenderer {
 			.request_device(
 				&wgpu::DeviceDescriptor {
 					label: None,
-					features: wgpu::Features::empty(),
+					required_features: wgpu::Features::empty(),
 					// WebGL doesn't support all of wgpu's features, so if
 					// we're building for the web we'll have to disable some.
-					limits,
+					required_limits: limits,
 				},
 				None,
 			)
@@ -283,6 +304,7 @@ impl InternalRenderer {
 			height: size.height,
 			present_mode: wgpu::PresentMode::Fifo,
 			alpha_mode: wgpu::CompositeAlphaMode::Auto,
+			desired_maximum_frame_latency: 2,
 			view_formats: vec![],
 		};
 		surface.configure(&device, &config);
@@ -293,6 +315,7 @@ impl InternalRenderer {
 			queue,
 			config: Mutex::new(config),
 			settings,
+			dirty_settings: Mutex::new(true),
 			meshes: DashMap::new(),
 			materials: DashMap::new(),
 			cameras: DashMap::new(),
@@ -303,9 +326,13 @@ impl InternalRenderer {
 
 	pub fn resize(&self, width: u32, height: u32) {
 		let mut conf = self.config.lock().unwrap();
-		conf.width = width;
-		conf.height = height;
-		self.surface.configure(&self.device, &conf);
+		if width != conf.width || height != conf.height {
+			conf.width = width;
+			conf.height = height;
+			self.surface.configure(&self.device, &conf);
+			*self.dirty_settings.lock().unwrap() = true;
+		}
+
 	}
 
 	pub fn get_resolution(&self) -> [u32; 2] {
@@ -315,12 +342,6 @@ impl InternalRenderer {
 
 	pub fn get_scaled_resolution(&self) -> [u32; 2] {
 		todo!()
-	}
-
-	pub fn update(&self) {
-		for mut camera in self.cameras.iter_mut() {
-			camera.update(&self);
-		}
 	}
 
 	pub fn new_id(&self) -> Id {

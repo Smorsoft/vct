@@ -74,6 +74,7 @@ fn get_mesh(
 	textures: &Vec<gltf::image::Data>,
 ) -> Mesh {
 	const I8_MAX: f32 = i8::MAX as f32;
+	const U16_MAX: f32 = u16::MAX as f32;
 	// const U8_MAX: f32 = u8::MAX as f32;
 
 	use wgpu::util::DeviceExt;
@@ -152,22 +153,24 @@ fn get_mesh(
 		};
 
 		for (tangent, normal) in tangents.zip(normals) {
-			let vertex_normals = VertexNormals {
-				normals: [
-					(I8_MAX * normal[0]) as i8,
-					(I8_MAX * normal[1]) as i8,
-					(I8_MAX * normal[2]) as i8,
-					0,
-				],
-				tangents: [
-					(I8_MAX * tangent[0]) as i8,
-					(I8_MAX * tangent[1]) as i8,
-					(I8_MAX * tangent[2]) as i8,
-					(I8_MAX * tangent[3]) as i8,
-				],
-			};
+			let mut bytes = Vec::new();
 
-			vertex_data.extend_from_slice(bytemuck::cast_slice(&[vertex_normals]));
+			// let vertex_normals = VertexNormals {
+			// 	normals: [
+			// 		normal[0],
+			// 		normal[1],
+			// 		normal[2],
+			// 		0.0,
+			// 	],
+			// 	tangents: tangent,
+			// };
+
+			bytes.extend_from_slice(&normal[0].to_ne_bytes());
+			bytes.extend_from_slice(&normal[1].to_ne_bytes());
+			bytes.extend_from_slice(&normal[2].to_ne_bytes());
+			bytes.extend_from_slice(bytemuck::cast_slice(&tangent));
+
+			vertex_data.extend_from_slice(&bytes[..]);
 		}
 	}
 
@@ -237,9 +240,14 @@ fn get_mesh(
 				| wgpu::BufferUsages::COPY_SRC,
 		});
 
-	let normal_matrix_4x4: glm::Mat4x4 = node.transform().matrix().into();
-	let normal_matrix: glm::Mat4x4 =
-		glm::mat3_to_mat4(&glm::mat4_to_mat3(&normal_matrix_4x4.try_inverse().unwrap().transpose()));
+	let (_, rotation, _) = node.transform().decomposed();
+
+	let normal_matrix: glm::Mat4x4 = glm::mat3_to_mat4(&glm::quat_to_mat3(&glm::quat(
+		rotation[0],
+		rotation[1],
+		rotation[2],
+		rotation[3],
+	)));
 
 	let normal_buffer = renderer
 		.device
@@ -304,66 +312,128 @@ fn get_material(
 		});
 	};
 
-	let (diffuse_texture, diffuse_view, diffuse_sampler) = if let Some(texture_info) =
-		material.pbr_metallic_roughness().base_color_texture()
-	{
-		let texture_data = &textures[texture_info.texture().source().index()];
-		let (texture, view, sampler) = match texture_data.format {
-			gltf::image::Format::R8G8B8 => {
-				let mut data = Vec::new();
+	let (diffuse_texture, diffuse_view, diffuse_sampler) =
+		if let Some(texture_info) = material.pbr_metallic_roughness().base_color_texture() {
+			let texture_data = &textures[texture_info.texture().source().index()];
+			let (texture, view, sampler) = match texture_data.format {
+				gltf::image::Format::R8G8B8 => {
+					let mut data = Vec::new();
 
-				for (i, _) in texture_data.pixels.iter().enumerate().step_by(3) {
-					data.push(texture_data.pixels[i]);
-					data.push(texture_data.pixels[i + 1]);
-					data.push(texture_data.pixels[i + 2]);
-					data.push(255);
+					for (i, _) in texture_data.pixels.iter().enumerate().step_by(3) {
+						data.push(texture_data.pixels[i]);
+						data.push(texture_data.pixels[i + 1]);
+						data.push(texture_data.pixels[i + 2]);
+						data.push(255);
+					}
+
+					let (texture, view) = get_texture(
+						renderer,
+						&data[..],
+						wgpu::TextureFormat::Rgba8UnormSrgb,
+						texture_data.width,
+						texture_data.height,
+					);
+					let sampler = new_default_sampler(renderer);
+					(texture, view, sampler)
 				}
+				gltf::image::Format::R8G8B8A8 => {
+					let (texture, view) = get_texture(
+						renderer,
+						&texture_data.pixels,
+						wgpu::TextureFormat::Rgba8UnormSrgb,
+						texture_data.width,
+						texture_data.height,
+					);
+					let sampler = new_default_sampler(renderer);
+					(texture, view, sampler)
+				}
+				_ => {
+					let image = image::load_from_memory(DEFAULT_DIFFUSE).unwrap();
+					let dimensions = image.dimensions();
+					let (texture, view) = get_texture(
+						renderer,
+						&image.to_rgba8(),
+						wgpu::TextureFormat::Rgba8UnormSrgb,
+						dimensions.0,
+						dimensions.1,
+					);
+					(texture, view, new_default_sampler(renderer))
+				}
+			};
 
-				let (texture, view) =
-					get_texture(renderer, &data[..], texture_data.width, texture_data.height);
-				let sampler = new_default_sampler(renderer);
-				(texture, view, sampler)
-			}
-			gltf::image::Format::R8G8B8A8 => {
-				let (texture, view) = get_texture(
-					renderer,
-					&texture_data.pixels,
-					texture_data.width,
-					texture_data.height,
-				);
-				let sampler = new_default_sampler(renderer);
-				(texture, view, sampler)
-			}
-			_ => {
-				let image = image::load_from_memory(DEFAULT_DIFFUSE).unwrap();
-				let dimensions = image.dimensions();
-				let (texture, view) =
-					get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
-				(texture, view, new_default_sampler(renderer))
-			}
+			(texture, view, sampler)
+		} else {
+			let image = image::load_from_memory(DEFAULT_DIFFUSE).unwrap();
+			let dimensions = image.dimensions();
+			let (texture, view) = get_texture(
+				renderer,
+				&image.to_rgba8(),
+				wgpu::TextureFormat::Rgba8UnormSrgb,
+				dimensions.0,
+				dimensions.1,
+			);
+			(texture, view, new_default_sampler(renderer))
 		};
-
-		(texture, view, sampler)
-	} else {
-		let image = image::load_from_memory(DEFAULT_DIFFUSE).unwrap();
-		let dimensions = image.dimensions();
-		let (texture, view) = get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
-		(texture, view, new_default_sampler(renderer))
-	};
 
 	let (metal_texture, metal_view, metal_sampler) = {
 		let image = image::load_from_memory(DEFAULT_METAL).unwrap();
 		let dimensions = image.dimensions();
-		let (texture, view) = get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
+		let (texture, view) = get_texture(
+			renderer,
+			&image.to_rgba8(),
+			wgpu::TextureFormat::Rgba8UnormSrgb,
+			dimensions.0,
+			dimensions.1,
+		);
 		(texture, view, new_default_sampler(renderer))
 	};
 
-	let (normal_texture, normal_view, normal_sampler) = {
-		let image = image::load_from_memory(DEFAULT_NORMAL).unwrap();
-		let dimensions = image.dimensions();
-		let (texture, view) = get_texture(renderer, &image.to_rgba8(), dimensions.0, dimensions.1);
-		(texture, view, new_default_sampler(renderer))
-	};
+	let (normal_texture, normal_view, normal_sampler) =
+		if let Some(texture_info) = material.normal_texture() {
+			let texture_data = &textures[texture_info.texture().source().index()];
+			// match texture_data.format {
+			// 	gltf::image::Format::R16 => println!("R16"),
+			// 	gltf::image::Format::R16G16 => println!("R16G16"),
+			// 	gltf::image::Format::R16G16B16 => println!("R16G16B16"),
+			// 	gltf::image::Format::R16G16B16A16 => println!("R16G16B16A16"),
+			// 	gltf::image::Format::R32G32B32A32FLOAT => println!("R32G32B32A32FLOAT"),
+			// 	gltf::image::Format::R32G32B32FLOAT => println!("R32G32B32FLOAT"),
+			// 	gltf::image::Format::R8 => println!("R8"),
+			// 	gltf::image::Format::R8G8 => println!("R8G8"),
+			// 	gltf::image::Format::R8G8B8 => println!("R8G8B8"),
+			// 	gltf::image::Format::R8G8B8A8 => println!("R8G8B8A8"),
+			// }
+
+			let mut data = Vec::new();
+
+			for (i, _) in texture_data.pixels.iter().enumerate().step_by(3) {
+				data.push(texture_data.pixels[i]);
+				data.push(texture_data.pixels[i + 1]);
+				data.push(texture_data.pixels[i + 2]);
+				data.push(255);
+			}
+
+			let (texture, view) = get_texture(
+				renderer,
+				&data[..],
+				wgpu::TextureFormat::Rgba8Unorm,
+				texture_data.width,
+				texture_data.height,
+			);
+			let sampler = new_default_sampler(renderer);
+			(texture, view, sampler)
+		} else {
+			let image = image::load_from_memory(DEFAULT_NORMAL).unwrap();
+			let dimensions = image.dimensions();
+			let (texture, view) = get_texture(
+				renderer,
+				&image.to_rgba8(),
+				wgpu::TextureFormat::Rgba8UnormSrgb,
+				dimensions.0,
+				dimensions.1,
+			);
+			(texture, view, new_default_sampler(renderer))
+		};
 
 	let bind_group = renderer
 		.device
@@ -424,6 +494,7 @@ fn get_material(
 fn get_texture(
 	renderer: &InternalRenderer,
 	bytes: &[u8],
+	format: wgpu::TextureFormat,
 	width: u32,
 	height: u32,
 ) -> (wgpu::Texture, wgpu::TextureView) {
@@ -438,7 +509,7 @@ fn get_texture(
 		mip_level_count: 1,
 		sample_count: 1,
 		dimension: wgpu::TextureDimension::D2,
-		format: wgpu::TextureFormat::Rgba8UnormSrgb,
+		format,
 		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
 		label: Some("Texture"),
 		view_formats: &[],
