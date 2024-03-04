@@ -1,4 +1,5 @@
 use crate::Renderer;
+use wgpu::core::command;
 use wgpu_helper::bind_group::BindGroupType;
 
 mod meshify;
@@ -8,6 +9,7 @@ use super::CommandEncoder;
 
 pub struct VoxelsResource {
 	pub color: crate::mesh::Texture,
+	pub size: wgpu::Extent3d,
 }
 
 impl crate::Resource for VoxelsResource {
@@ -17,6 +19,9 @@ impl crate::Resource for VoxelsResource {
 pub struct VoxelizationPass {
 	voxelizer_pipeline: wgpu::ComputePipeline,
 	voxels_bind_group_layout: wgpu::BindGroupLayout,
+
+	mip_mapping_pipeline: wgpu::ComputePipeline,
+	mip_map_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl VoxelizationPass {
@@ -40,10 +45,12 @@ impl VoxelizationPass {
 			..Default::default()
 		};
 
+		let mip_level_count = size.max_mips(wgpu::TextureDimension::D3);
+
 		let voxel_color_texture = renderer.device().create_texture(&wgpu::TextureDescriptor {
 			label: Some("Voxel Color Texture"),
 			size,
-			mip_level_count: 1,
+			mip_level_count,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D3,
 			format: wgpu::TextureFormat::Rgba8Unorm,
@@ -65,7 +72,7 @@ impl VoxelizationPass {
 			sampler: voxel_color_sampler,
 		};
 
-		let voxels_resource = VoxelsResource { color: voxel_color };
+		let voxels_resource = VoxelsResource { color: voxel_color, size, };
 
 		renderer.insert_resource(voxels_resource);
 
@@ -121,10 +128,60 @@ impl VoxelizationPass {
 					module: &voxelizer_shader,
 					entry_point: "main",
 				});
-				
+
+
+		let mip_map_shader = renderer.device().create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("Voxel Mipmapping shader"),
+			source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("../shaders/voxel_mip_map.wgsl")))
+		});
+
+		let mip_map_bind_group_layout = renderer.device().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: Some("Voxel Mipmapping bind group layout"),
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::COMPUTE,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						view_dimension: wgpu::TextureViewDimension::D3,
+						multisampled: false,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::COMPUTE,
+					ty: wgpu::BindingType::StorageTexture {
+						access: wgpu::StorageTextureAccess::WriteOnly,
+						format: wgpu::TextureFormat::Rgba8Unorm,
+						view_dimension: wgpu::TextureViewDimension::D3,
+					},
+					count: None,
+				}
+			]
+		});
+
+		let mip_map_layout = renderer.device().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: Some("Voxel mipmapping pipeline layout"),
+			bind_group_layouts: &[
+				&mip_map_bind_group_layout,
+			],
+			push_constant_ranges: &[],
+		});
+
+		let mip_mapping_pipeline = renderer.device().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+			label: Some("Voxel Mipmapping pipeline"),
+			layout: Some(&mip_map_layout),
+			module: &mip_map_shader,
+			entry_point: "main",
+		});
+
 		Self {
 			voxelizer_pipeline,
 			voxels_bind_group_layout,
+
+			mip_mapping_pipeline,
+			mip_map_bind_group_layout,
 		}
 	}
 }
@@ -190,6 +247,13 @@ impl super::RenderPassTrait for VoxelizationPass {
 
 		let voxels_resource = global_resources.get_resource::<VoxelsResource>().unwrap();
 
+		let voxelization_view = voxels_resource.color.texture.create_view(&wgpu::TextureViewDescriptor {
+			label: Some("Voxel Mipmapping source"),
+			base_mip_level: 0,
+			mip_level_count: Some(1),
+			..Default::default()
+		});
+
 		let mut encoder =
 		command_encoder
 		.device()
@@ -197,17 +261,17 @@ impl super::RenderPassTrait for VoxelizationPass {
 					label: Some("Voxelization Encoder"),
 				});
 
-				let voxels_bind_group =
-				command_encoder
-				.device()
-				.create_bind_group(&wgpu::BindGroupDescriptor {
-					label: Some("Voxels Bind Group"),
-					layout: &self.voxels_bind_group_layout,
-					entries: &[wgpu::BindGroupEntry {
-						binding: 0,
-						resource: wgpu::BindingResource::TextureView(&voxels_resource.color.view),
-					}],
-				});
+		let voxels_bind_group =
+		command_encoder
+		.device()
+		.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("Voxels Bind Group"),
+			layout: &self.voxels_bind_group_layout,
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: wgpu::BindingResource::TextureView(&voxelization_view),
+			}],
+		});
 				
 		let meshes = command_encoder.get_meshes();
 		let mut runs = Vec::new();
@@ -292,6 +356,52 @@ impl super::RenderPassTrait for VoxelizationPass {
 						compute_pass.dispatch_workgroups(*size, 1, 1);
 					}
 				}
+			}
+		}
+
+		// Mipmapping
+		for mip_level in 1..voxels_resource.size.max_mips(wgpu::TextureDimension::D3) {
+			let size = voxels_resource.size.mip_level_size(mip_level, wgpu::TextureDimension::D3);
+
+			let source_view = voxels_resource.color.texture.create_view(&wgpu::TextureViewDescriptor {
+				label: Some("Voxel Mipmapping source"),
+				base_mip_level: mip_level - 1,
+				mip_level_count: Some(1),
+				..Default::default()
+			});
+
+			let output_view = voxels_resource.color.texture.create_view(&wgpu::TextureViewDescriptor {
+				label: Some("Voxel Mipmapping output"),
+				base_mip_level: mip_level,
+				mip_level_count: Some(1),
+				..Default::default()
+			});
+
+			let bind_group = command_encoder.device().create_bind_group(&wgpu::BindGroupDescriptor {
+				label: Some("Voxel Mipmapping bind group"),
+				layout: &self.mip_map_bind_group_layout,
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: wgpu::BindingResource::TextureView(&source_view),
+					},
+					wgpu::BindGroupEntry {
+						binding: 1,
+						resource: wgpu::BindingResource::TextureView(&output_view),
+					},
+				],
+			});
+			
+			{
+				let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+					label: Some("mip map pass: "),
+					timestamp_writes: None,
+				});
+
+				compute_pass.set_pipeline(&self.mip_mapping_pipeline);
+				compute_pass.set_bind_group(0, &bind_group, &[]);
+
+				compute_pass.dispatch_workgroups(size.width, size.height, size.depth_or_array_layers);
 			}
 		}
 

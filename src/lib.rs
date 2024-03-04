@@ -256,6 +256,10 @@ pub(crate) struct InternalRenderer {
 	current_id: core::sync::atomic::AtomicU64,
 }
 
+// TODO: Remove, currently used for load_gltf multithreading, which only touches current_id, materials and meshes as such will not crash, but still unsafe.
+unsafe impl Send for InternalRenderer {}
+unsafe impl Sync for InternalRenderer {}
+
 impl InternalRenderer {
 	pub async fn new(window: Arc<Window>, settings: RendererSettings) -> Self {
 		let size = window.inner_size();
@@ -355,7 +359,7 @@ pub struct RendererSettings {
 	pub extras: HashMap<String, u8>,
 }
 
-pub trait Resource: core::any::Any {
+pub trait Resource: core::any::Any + Send {
 	fn updated_settings(&mut self, renderer: &Renderer);
 }
 

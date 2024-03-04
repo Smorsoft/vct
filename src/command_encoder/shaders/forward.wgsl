@@ -1,3 +1,6 @@
+const WIDTH = 50.0;
+const VOXEL_SIZE = 0.09765625;
+
 // Vertex Shader
 
 struct CameraUniform {
@@ -36,8 +39,6 @@ var s_normal: sampler;
 
 @group(3) @binding(0)
 var voxels_color: texture_3d<f32>;
-
-// https://www.reddit.com/r/opengl/comments/phwo3g/comment/hbq6tzs/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 
 struct VertexNormals {
 	@location(1) normals: vec3<f32>,
@@ -116,14 +117,29 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let result = (ambient_color + diffuse_color) * dif.rgb;
 
-
-    // var lv: vec4<f32> = vec4(0.0);
-	// while (lv.a < 1.0) {
-	// 	let origin = in.world_position;
-	// 	let y = pixel_normal;
-	// }
-
-
-
     return vec4(result, dif.a);
+}
+
+fn diffuse_trace() -> vec3<f32> {
+    
+
+    
+    return vec3(0.0);
+}
+
+const CONE_SPREAD: f32 = 0.325;
+const MAX_DISTANCE: f32 = 30.0;
+fn trace_diffuse_cone(start: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
+
+    var dist: f32 = 0.1953125;
+
+    var acc: vec4<f32> = vec4(0.0);
+	while (dist < MAX_DISTANCE && acc.a < 1.0) {
+		var c = start + (dir * dist);
+        var diameter = CONE_SPREAD * dist;
+        dist += diameter;
+		
+	}
+
+    return vec3(0.0);
 }

@@ -231,7 +231,11 @@ impl MeshifyPass {
 }
 
 impl RenderPassTrait for MeshifyPass {
-	fn execute<'manager>(&mut self, command_encoder: &'manager CommandEncoder, global_resources: &mut crate::ResourceManagerHandle<'manager>) -> Option<wgpu::CommandBuffer> {
+	fn execute<'manager>(
+		&mut self,
+		command_encoder: &'manager CommandEncoder,
+		global_resources: &mut crate::ResourceManagerHandle<'manager>,
+	) -> Option<wgpu::CommandBuffer> {
 		let mut encoder =
 			command_encoder
 				.device()
@@ -239,7 +243,9 @@ impl RenderPassTrait for MeshifyPass {
 					label: Some("Count Encoder"),
 				});
 
-		let voxels_resource = global_resources.get_resource::<super::VoxelsResource>().unwrap();
+		let voxels_resource = global_resources
+			.get_resource::<super::VoxelsResource>()
+			.unwrap();
 
 		// Clear count buffer.
 		encoder.copy_buffer_to_buffer(
@@ -250,6 +256,16 @@ impl RenderPassTrait for MeshifyPass {
 			std::mem::size_of::<i32>() as u64,
 		);
 
+		let view = voxels_resource
+			.color
+			.texture
+			.create_view(&wgpu::TextureViewDescriptor {
+				label: Some("Voxel Mipmapping output"),
+				base_mip_level: 3,
+				mip_level_count: Some(1),
+				..Default::default()
+			});
+
 		let count_bind_group =
 			command_encoder
 				.device()
@@ -259,9 +275,7 @@ impl RenderPassTrait for MeshifyPass {
 					entries: &[
 						wgpu::BindGroupEntry {
 							binding: 0,
-							resource: wgpu::BindingResource::TextureView(
-								&voxels_resource.color.view,
-							),
+							resource: wgpu::BindingResource::TextureView(&view),
 						},
 						wgpu::BindGroupEntry {
 							binding: 1,
@@ -368,9 +382,7 @@ impl RenderPassTrait for MeshifyPass {
 						entries: &[
 							wgpu::BindGroupEntry {
 								binding: 0,
-								resource: wgpu::BindingResource::TextureView(
-									&voxels_resource.color.view,
-								),
+								resource: wgpu::BindingResource::TextureView(&view),
 							},
 							wgpu::BindGroupEntry {
 								binding: 1,
@@ -493,34 +505,48 @@ impl RenderMeshifyPass {
 }
 
 impl RenderPassTrait for RenderMeshifyPass {
-	fn execute<'manager>(&mut self, command_encoder: &'manager CommandEncoder, global_resources: &mut crate::ResourceManagerHandle<'manager>) -> Option<wgpu::CommandBuffer> {
-		if global_resources.get_resource::<VoxelsMeshResource>().is_none() {
+	fn execute<'manager>(
+		&mut self,
+		command_encoder: &'manager CommandEncoder,
+		global_resources: &mut crate::ResourceManagerHandle<'manager>,
+	) -> Option<wgpu::CommandBuffer> {
+		if global_resources
+			.get_resource::<VoxelsMeshResource>()
+			.is_none()
+		{
 			println!("No Voxels Mesh... Returning");
 			return None;
 		}
 
 		let view = command_encoder.get_surface_texture_view();
-		
+
 		let camera = command_encoder.get_camera().unwrap();
-		
-		let depth_buffer = if global_resources.get_resource::<crate::resources::DepthBufferResource>().is_none() {
+
+		let depth_buffer = if global_resources
+			.get_resource::<crate::resources::DepthBufferResource>()
+			.is_none()
+		{
 			let depth_buffer = camera.new_depth_buffer();
-			
-			let depth_buffer_resource = crate::resources::DepthBufferResource {
-				depth_buffer,
-			};
-			
+
+			let depth_buffer_resource = crate::resources::DepthBufferResource { depth_buffer };
+
 			global_resources.insert_resource(depth_buffer_resource);
-			global_resources.get_resource::<crate::resources::DepthBufferResource>().unwrap()
+			global_resources
+				.get_resource::<crate::resources::DepthBufferResource>()
+				.unwrap()
 		} else {
-			global_resources.get_resource::<crate::resources::DepthBufferResource>().unwrap()
+			global_resources
+				.get_resource::<crate::resources::DepthBufferResource>()
+				.unwrap()
 		};
 
-		let mut encoder = command_encoder.device().create_command_encoder(&wgpu::CommandEncoderDescriptor {
-			label: None,
-		});
-		
-		let voxels_mesh = global_resources.get_resource::<VoxelsMeshResource>().unwrap();
+		let mut encoder = command_encoder
+			.device()
+			.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+		let voxels_mesh = global_resources
+			.get_resource::<VoxelsMeshResource>()
+			.unwrap();
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				label: Some("Render Pass"),
@@ -550,23 +576,23 @@ impl RenderPassTrait for RenderMeshifyPass {
 			});
 
 			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_bind_group(0, unsafe { command_encoder.get_camera_bind_group().unwrap().as_untyped() }, &[]);
-
+			render_pass.set_bind_group(
+				0,
+				unsafe {
+					command_encoder
+						.get_camera_bind_group()
+						.unwrap()
+						.as_untyped()
+				},
+				&[],
+			);
 
 			render_pass.set_vertex_buffer(0, voxels_mesh.vertices.slice(..));
-			render_pass.set_index_buffer(
-				voxels_mesh.indices.slice(..),
-				wgpu::IndexFormat::Uint32,
-			);
+			render_pass.set_index_buffer(voxels_mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
 
-			render_pass.draw_indexed(
-				0..(voxels_mesh.indices.size() as u32) / 4,
-				0,
-				0..1,
-			);
-
+			render_pass.draw_indexed(0..(voxels_mesh.indices.size() as u32) / 4, 0, 0..1);
 		}
-		
+
 		Some(encoder.finish())
 	}
 }
