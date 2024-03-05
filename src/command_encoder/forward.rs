@@ -1,8 +1,10 @@
 use crate::command_encoder::*;
+use wgpu_helper::types;
 use wgpu_helper::bind_group::{BindGroup, BindGroupType};
 
 pub struct ForwardRenderingPass {
 	render_pipeline: wgpu::RenderPipeline,
+	voxels_read_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl ForwardRenderingPass {
@@ -16,6 +18,28 @@ impl ForwardRenderingPass {
 				),
 			});
 
+		let voxels_read_bind_group_layout = renderer.device().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: Some("Voxels Bind group layout"),
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						view_dimension: wgpu::TextureViewDimension::D3,
+						multisampled: false,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+					count: None,
+				},
+			],
+		});
+
 		let render_pipeline_layout =
 			renderer
 				.device()
@@ -25,6 +49,7 @@ impl ForwardRenderingPass {
 						&crate::camera::CameraBindGroup::get_bind_group_layout(&renderer.device()),
 						&crate::ModelBindGroup::get_bind_group_layout(&renderer.device()),
 						&crate::MaterialBindGroup::get_bind_group_layout(&renderer.device()),
+						&voxels_read_bind_group_layout,
 					],
 					push_constant_ranges: &[],
 				});
@@ -77,7 +102,7 @@ impl ForwardRenderingPass {
 					multiview: None,
 				});
 
-		Self { render_pipeline }
+		Self { render_pipeline, voxels_read_bind_group_layout }
 	}
 }
 
@@ -104,6 +129,22 @@ impl RenderPassTrait for ForwardRenderingPass {
 
 		let meshes = command_encoder.get_meshes();
 		let materials = command_encoder.get_materials();
+
+		let voxels_resource = global_resources.get_resource::<super::voxelization::VoxelsResource>().unwrap();
+		let voxels_bind_group = command_encoder.device().create_bind_group(&wgpu::BindGroupDescriptor {
+			label: None,
+			layout: &self.voxels_read_bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&voxels_resource.color.view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(&voxels_resource.color.sampler),
+				},
+			]
+		});
 		
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -135,6 +176,7 @@ impl RenderPassTrait for ForwardRenderingPass {
 
 			render_pass.set_pipeline(&self.render_pipeline);
 			render_pass.set_bind_group(0, unsafe { &command_encoder.get_camera_bind_group().unwrap().as_untyped() }, &[]);
+			render_pass.set_bind_group(3, &voxels_bind_group, &[]);
 
 			for mesh in meshes.meshes.iter() {
 				render_pass.set_bind_group(1, &mesh.model_bind_group, &[]);

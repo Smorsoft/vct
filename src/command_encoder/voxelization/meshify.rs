@@ -261,7 +261,7 @@ impl RenderPassTrait for MeshifyPass {
 			.texture
 			.create_view(&wgpu::TextureViewDescriptor {
 				label: Some("Voxel Mipmapping output"),
-				base_mip_level: 3,
+				base_mip_level: 1,
 				mip_level_count: Some(1),
 				..Default::default()
 			});

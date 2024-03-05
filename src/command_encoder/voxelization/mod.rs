@@ -39,7 +39,7 @@ impl VoxelizationPass {
 			mag_filter: wgpu::FilterMode::Nearest,
 			min_filter: wgpu::FilterMode::Nearest,
 			mipmap_filter: wgpu::FilterMode::Nearest,
-			compare: Some(wgpu::CompareFunction::LessEqual),
+			compare: None,
 			lod_min_clamp: 0.0,
 			lod_max_clamp: 100.0,
 			..Default::default()
