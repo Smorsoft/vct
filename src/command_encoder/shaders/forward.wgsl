@@ -108,44 +108,75 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		discard;
     }
 
-    let color = dif.rgb * diffuse_trace(in.world_position, pixel_normal);
+    let light_dir = normalize(LIGHT.position - in.world_position);
+    let diffuse_strength = max(dot(pixel_normal, light_dir), 0.0);
+    let diffuse_color = LIGHT.color * diffuse_strength;
+
+    let color = dif.rgb * ((vec3(0.01) + diffuse_color * (1.0 - shadow_trace(in.world_position, pixel_normal, LIGHT.position))));
+    // let color = dif.rgb * ((vec3(0.01) + diffuse_color));
+
+    // let color = dif.rgb * diffuse_trace(in.world_position, pixel_normal, normalize(in.tangents.xyz));
+    // let color = test_cone_trace(in.world_position, vec3(0.0, 1.0, 0.0));
 
     return vec4(color, 1.0);
 }
 
-const DIFFUSE_OFFSET: f32 = 0.01;
+const SHADOW_DIAMETER: f32 = 0.096;
+fn shadow_trace(position: vec3<f32>, nrm: vec3<f32>, light_position: vec3<f32>) -> f32 {
+    let origin = position + (nrm * 0.1);
+    let dir = normalize(light_position - origin);
+
+    let max_dist = distance(origin, light_position);
+    var dist = 0.0;
+    var occlusion = 0.0;
+
+    while (dist < max_dist && occlusion < 1.0) {
+		var c = origin + (dir * dist);
+        dist += SHADOW_DIAMETER;
+		
+        let voxel = vol_sample(SHADOW_DIAMETER, c);
+        let v_occlusion = voxel.a;
+        occlusion = occlusion + (1.0 - occlusion) * v_occlusion;
+	}
+
+    return occlusion;
+}
+
+const DIFFUSE_OFFSET: f32 = 0.05;
 const TILT_FACTOR: f32 = 0.5;
-fn diffuse_trace(position: vec3<f32>, nrm: vec3<f32>) -> vec3<f32> {
+fn diffuse_trace(position: vec3<f32>, nrm: vec3<f32>, tangent: vec3<f32>) -> vec3<f32> {
     let origin = position + (nrm * DIFFUSE_OFFSET);
 
     let y = nrm;
-    let x = normalize(cross(y, vec3(0.0, 0.0, 1.0)));
-    let z = normalize(cross(y, x));
+    let x = tangent;
+    let z = normalize(cross(nrm, tangent));
 
     var color = vec3(0.0);
     
     // Front
-    color += trace_diffuse_cone(origin, y);
+    // color += trace_diffuse_cone(origin, nrm, nrm);
+    // return color;
 
     // Sides
-    color += trace_diffuse_cone(origin, x);
-    color += trace_diffuse_cone(origin, -x);
-    color += trace_diffuse_cone(origin, z);
-    color += trace_diffuse_cone(origin, -z);
+    // color += trace_diffuse_cone(origin, x, nrm);
+    // color += trace_diffuse_cone(origin, -x, nrm);
+    // color += trace_diffuse_cone(origin, z, nrm);
+    // color += trace_diffuse_cone(origin, -z, nrm);
 
-    // Intermediate
-    color += trace_diffuse_cone(origin, mix(y, x, TILT_FACTOR));
-    color += trace_diffuse_cone(origin, mix(y, -x, TILT_FACTOR));
-    color += trace_diffuse_cone(origin, mix(y, z, TILT_FACTOR));
-    color += trace_diffuse_cone(origin, mix(y, -z, TILT_FACTOR));
+    // // Intermediate
+    // color += trace_diffuse_cone(origin, mix(y, x, TILT_FACTOR));
+    // color += trace_diffuse_cone(origin, mix(y, -x, TILT_FACTOR));
+    // color += trace_diffuse_cone(origin, mix(y, z, TILT_FACTOR));
+    // color += trace_diffuse_cone(origin, mix(y, -z, TILT_FACTOR));
 
-    return color * (5.0 / 9.0);
+    return vec3(1.0);
+    // return color / 5.0;
 }
 
 const CONE_SPREAD: f32 = 0.325;
 const MAX_DISTANCE: f32 = 30.0;
-fn trace_diffuse_cone(start: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
-    var dist: f32 = 0.1953125;
+fn trace_diffuse_cone(start: vec3<f32>, dir: vec3<f32>, nrm: vec3<f32>) -> vec3<f32> {
+    var dist: f32 = 1.0;
 
     var color: vec3<f32> = vec3(0.0);
     var occlusion = 0.0;
@@ -159,20 +190,22 @@ fn trace_diffuse_cone(start: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
         let v_color = voxel.rgb;
         let v_occlusion = voxel.a;
 
-        if diameter * 1.2 >= abs(distance(c, LIGHT.position)) {
-            let light_dir = normalize(LIGHT.position - start);
-            let diffuse_strength = max(dot(dir, light_dir), 0.0);
-
-            if dot(dir, light_dir) > 0.25 {
-                return LIGHT.color * (1.0 - occlusion);
-            }
-        }
 
         color = occlusion*color + (1.0 - occlusion) * v_occlusion * v_color;
         occlusion = occlusion + (1.0 - occlusion) * v_occlusion;
+
+        if diameter / 2.0 >= abs(distance(c, LIGHT.position)) {
+            let light_dir = normalize(LIGHT.position - start);
+            let diffuse_strength = max(dot(nrm, light_dir), 0.0) * (1.0 - occlusion);
+            // color =  occlusion*color + (1.0 - occlusion) * LIGHT.color;
+            return LIGHT.color * (1.0 - occlusion);
+
+            // if dot(dir, light_dir) > 0.25 {
+            // }
+        }
 	}
 
-    return color;
+    return vec3(0.0);
 }
 
 fn vol_sample(diameter: f32, position: vec3<f32>) -> vec4<f32> {
@@ -181,8 +214,10 @@ fn vol_sample(diameter: f32, position: vec3<f32>) -> vec4<f32> {
 
     let pos = (position + (WIDTH / 2.0)) / voxels_size;
 
+    let uvw = pos / f32(voxels_dim);
+
     var vlevel = log2(diameter / voxels_size);
     vlevel = min(f32(textureNumLevels(voxels_color) - 1u), vlevel);
 
-    return textureSampleLevel(voxels_color, voxels_color_s, pos, vlevel);
+    return textureSampleLevel(voxels_color, voxels_color_s, uvw, vlevel);
 }
